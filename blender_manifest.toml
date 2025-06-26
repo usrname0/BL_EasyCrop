@@ -1,0 +1,39 @@
+# blender_manifest.toml
+# Manifest file for the BL Easy Crop Extension
+
+schema_version = "1.0.0"
+id = "BL_EasyCrop"
+version = "1.0.0"
+
+name = "BL Easy Crop"
+author = "Claude"
+maintainer = "usrname0"
+tagline = "Easy cropping tool for Blender's Video Sequence Editor"
+type = "add-on"
+website = "https://github.com/usrname0/BL_EasyCrop"
+
+blender_version_min = "4.4.0"
+
+license = ["SPDX:GPL-3.0-or-later"]
+
+copyright = [
+    "2025 usrname0"
+]
+
+description = """A visual interface for Blender's built-in crop function.  
+	With this extension crop looks and behaves more like the other transforms (scale, rotate, move, transform)."""
+
+tags = ["Sequencer", "User Interface"]
+
+[build]
+paths_exclude_pattern = [
+    "__pycache__/",
+    "/.git/",
+    "/.gitignore",
+    "/README.md",
+    "/*.zip",
+    "/test_addon.py",
+    "/DEVELOPMENT.md",
+    "/.vscode/",
+    "/pyproject.toml",
+]
