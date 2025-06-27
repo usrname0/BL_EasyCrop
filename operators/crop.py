@@ -180,6 +180,9 @@ def draw_crop_handles():
     
     # Get preview transform - we need to use the View2D system
     region = context.region
+    if not region:
+        return
+    
     view2d = context.region.view2d
     
     screen_corners = []
@@ -320,22 +323,6 @@ class EASYCROP_OT_crop(bpy.types.Operator):
     bl_description = "Crop a strip in the Image Preview"
     bl_options = {'REGISTER', 'UNDO'}
     
-    # Property to track if activated from tool
-    from_tool: BoolProperty(
-        name="From Tool",
-        default=False,
-        options={'SKIP_SAVE', 'HIDDEN'}
-    )
-    
-    # Use class variables that will be set per instance
-    active_corner = -1
-    mouse_start = (0.0, 0.0)
-    crop_start = (0.0, 0.0, 0.0, 0.0)
-    timer = None
-    first_click = False
-    first_mouse_x = 0
-    first_mouse_y = 0
-    
     @classmethod
     def poll(cls, context):
         scene = context.scene
@@ -361,6 +348,15 @@ class EASYCROP_OT_crop(bpy.types.Operator):
     
     def invoke(self, context, event):
         global _draw_handle, _draw_data, _crop_active
+        
+        # Initialize instance variables
+        self.active_corner = -1
+        self.mouse_start = (0.0, 0.0)
+        self.crop_start = (0.0, 0.0, 0.0, 0.0)
+        self.timer = None
+        self.first_click = False
+        self.first_mouse_x = 0
+        self.first_mouse_y = 0
         
         # Clean up any existing handler first (safety check for lingering state)
         if _draw_handle is not None:
@@ -436,45 +432,13 @@ class EASYCROP_OT_crop(bpy.types.Operator):
         # Add modal handler
         wm.modal_handler_add(self)
         
-        # If activated from tool button, just show handles
-        # If activated from direct interaction, check for handle click
-        if self.from_tool:
-            # Tool button clicked - just show handles, don't wait for click
-            self.first_click = False
-        elif event.type == 'LEFTMOUSE':
-            # Direct click - check for handle interaction
-            self.first_click = True
-            self.first_mouse_x = event.mouse_region_x
-            self.first_mouse_y = event.mouse_region_y
-        else:
-            # Keyboard shortcut - just show handles
-            self.first_click = False
+        # ALWAYS just show handles - don't try to handle first click
+        self.first_click = False
         
         return {'RUNNING_MODAL'}
     
     def modal(self, context, event):
         global _draw_data
-        
-        # Handle first click if from direct interaction
-        if hasattr(self, 'first_click') and self.first_click:
-            self.first_click = False
-            # Create a fake mouse event at the stored position
-            fake_event = type('obj', (object,), {
-                'mouse_region_x': self.first_mouse_x,
-                'mouse_region_y': self.first_mouse_y
-            })
-            corner = self.get_corner_at_mouse(context, fake_event)
-            if corner >= 0:
-                self.active_corner = corner
-                _draw_data['active_corner'] = corner
-                self.mouse_start = (self.first_mouse_x, self.first_mouse_y)
-                strip = context.scene.sequence_editor.active_strip
-                self.crop_start = (
-                    strip.crop.min_x,
-                    strip.crop.max_x,
-                    strip.crop.min_y,
-                    strip.crop.max_y
-                )
         
         # Handle timer events to force redraw
         if event.type == 'TIMER':
@@ -524,16 +488,19 @@ class EASYCROP_OT_crop(bpy.types.Operator):
             strip.crop.max_y = int(self.crop_start[3])
             return self.finish(context, cancelled=True)
         
-        elif event.type in {'G', 'S', 'R'}:
+        # Check for transform operators dynamically
+        elif self.is_transform_key(context, event):
             # Exit crop mode and activate the transform
             self.finish(context)
-            # Trigger the transform operator
-            if event.type == 'G':
-                bpy.ops.transform.translate('INVOKE_DEFAULT')
-            elif event.type == 'S':
-                bpy.ops.transform.resize('INVOKE_DEFAULT')
-            elif event.type == 'R':
-                bpy.ops.transform.rotate('INVOKE_DEFAULT')
+            # Find which transform operator to invoke
+            transform_op = self.get_transform_operator(context, event)
+            if transform_op:
+                if transform_op == 'transform.translate':
+                    bpy.ops.transform.translate('INVOKE_DEFAULT')
+                elif transform_op == 'transform.resize':
+                    bpy.ops.transform.resize('INVOKE_DEFAULT')
+                elif transform_op == 'transform.rotate':
+                    bpy.ops.transform.rotate('INVOKE_DEFAULT')
             return {'FINISHED'}
         
         elif event.type in {'MIDDLEMOUSE', 'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}:
@@ -602,7 +569,7 @@ class EASYCROP_OT_crop(bpy.types.Operator):
         """Get the corner and edge midpoint positions in screen space"""
         strip = context.scene.sequence_editor.active_strip
         scene = context.scene
-        if not strip:
+        if not strip or not context.region:
             return [], []
         
         # Use the exact same calculation as in draw_crop_handles
@@ -840,3 +807,49 @@ class EASYCROP_OT_crop(bpy.types.Operator):
                 new_min_y = int(max(0, self.crop_start[2] + dy_res))
                 if new_min_y + strip.crop.max_y < strip_height:
                     strip.crop.min_y = new_min_y
+    
+    def is_transform_key(self, context, event):
+        """Check if the pressed key is bound to a transform operator"""
+        if event.value != 'PRESS':
+            return False
+            
+        # Get the active keyconfig
+        wm = context.window_manager
+        kc = wm.keyconfigs.active
+        
+        # Check common transform operators
+        transform_ops = ['transform.translate', 'transform.resize', 'transform.rotate']
+        
+        # Look through keymaps for transform operators
+        for keymap_name in ['Sequencer', 'SequencerPreview']:
+            if keymap_name in kc.keymaps:
+                km = kc.keymaps[keymap_name]
+                for kmi in km.keymap_items:
+                    if kmi.active and kmi.idname in transform_ops:
+                        if (kmi.type == event.type and 
+                            kmi.shift == event.shift and
+                            kmi.ctrl == event.ctrl and
+                            kmi.alt == event.alt):
+                            return True
+        
+        return False
+    
+    def get_transform_operator(self, context, event):
+        """Get which transform operator is bound to the pressed key"""
+        # Get the active keyconfig
+        wm = context.window_manager
+        kc = wm.keyconfigs.active
+        
+        # Look through keymaps for transform operators
+        for keymap_name in ['Sequencer', 'SequencerPreview']:
+            if keymap_name in kc.keymaps:
+                km = kc.keymaps[keymap_name]
+                for kmi in km.keymap_items:
+                    if kmi.active and kmi.type == event.type:
+                        if (kmi.shift == event.shift and
+                            kmi.ctrl == event.ctrl and
+                            kmi.alt == event.alt):
+                            if kmi.idname in ['transform.translate', 'transform.resize', 'transform.rotate']:
+                                return kmi.idname
+        
+        return None

@@ -1,8 +1,9 @@
 # BL Easy Crop
 
-A visual interface for the built-in crop in Blender's Visual Sequence Editor.  With this extension
-crop looks and behaves like the other transforms in the VSE's preview pane.  Just hit "C" or hit the 
-button to click and drag your crop.  It lives alongside move, scale, rotate and transform on the toolbar.  
+A visual interface to change Blender's Visual Sequence Editor crop parameters.  
+With this extension crop looks and behaves like the other transforms in the VSE's preview pane.  
+Just hit "C" or hit the button to click and drag your crop on-screen.  
+It lives alongside move, scale, rotate and transform on the toolbar.  
 
 ## Installation
 

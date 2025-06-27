@@ -17,12 +17,10 @@ from bpy.types import Operator, Panel, Menu, WorkSpaceTool
 # Import operators with better error reporting
 try:
     from .operators.crop import EASYCROP_OT_crop
-    from .operators.select import EASYCROP_OT_select
     operators_imported = True
 except ImportError as e:
     print(f"BL Easy Crop: Import error: {e}")
     EASYCROP_OT_crop = None
-    EASYCROP_OT_select = None
     operators_imported = False
 
 
@@ -53,43 +51,22 @@ class EASYCROP_TOOL_crop(WorkSpaceTool):
     bl_icon = "ops.mesh.knife_tool"
     bl_widget = None
     bl_keymap = (
-        ("easycrop.crop", {"type": 'LEFTMOUSE', "value": 'PRESS'}, 
-         {"properties": [("from_tool", True)]}),
+        ("easycrop.crop", {"type": 'LEFTMOUSE', "value": 'PRESS'}, None),
     )
-
-
-# Global to track tool state
-_last_tool = None
-
-def tool_check_handler():
-    """Check if crop tool was just activated"""
-    global _last_tool
     
-    try:
-        context = bpy.context
-        if not context.workspace:
-            return 0.1
-            
-        tool = context.workspace.tools.from_space_sequencer('PREVIEW')
-        if tool and tool.idname == "easycrop.crop_tool":
-            if _last_tool != "easycrop.crop_tool":
-                # Tool was just activated
-                _last_tool = "easycrop.crop_tool"
-                # Check if we have a valid strip selected
-                if (context.scene.sequence_editor and 
-                    context.scene.sequence_editor.active_strip and
-                    hasattr(context.scene.sequence_editor.active_strip, 'crop')):
-                    # Import here to avoid circular import
-                    from .operators import crop
-                    if not crop._crop_active:
-                        # Activate crop mode
-                        bpy.ops.easycrop.crop('INVOKE_DEFAULT')
-        else:
-            _last_tool = tool.idname if tool else None
-    except:
-        pass
-    
-    return 0.1  # Check every 0.1 seconds
+    @staticmethod  
+    def draw_settings(context, layout, tool):
+        # Check if we should auto-activate
+        if (context.scene.sequence_editor and 
+            context.scene.sequence_editor.active_strip and
+            hasattr(context.scene.sequence_editor.active_strip, 'crop')):
+            try:
+                from .operators import crop
+                if not crop._crop_active:
+                    # Show a message that they need to click
+                    layout.label(text="Click in preview to start cropping", icon='INFO')
+            except:
+                pass
 
 
 # Menu append functions
@@ -104,7 +81,6 @@ def add_menu_func(self, context):
 # Registration
 classes = [
     EASYCROP_OT_crop,
-    EASYCROP_OT_select,
     EASYCROP_MT_menu,
 ]
 
@@ -113,9 +89,6 @@ addon_keymaps = []
 
 def register():
     """Register the addon"""
-    global _last_tool
-    _last_tool = None
-    
     # Check if operators were imported successfully
     if not operators_imported:
         print("BL Easy Crop: Failed to import operators - check operators/__init__.py exists")
@@ -157,22 +130,10 @@ def register():
             bpy.utils.register_tool(EASYCROP_TOOL_crop)
         except Exception as e2:
             print(f"BL Easy Crop: Tool registration failed: {e2}")
-    
-    # Start tool check timer
-    if bpy.app.timers.is_registered(tool_check_handler):
-        bpy.app.timers.unregister(tool_check_handler)
-    bpy.app.timers.register(tool_check_handler, persistent=True)
 
 
 def unregister():
     """Unregister the addon"""
-    global _last_tool
-    _last_tool = None
-    
-    # Stop tool check timer
-    if bpy.app.timers.is_registered(tool_check_handler):
-        bpy.app.timers.unregister(tool_check_handler)
-    
     # Force cleanup of any active crop mode
     try:
         from .operators import crop
