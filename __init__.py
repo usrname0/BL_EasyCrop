@@ -1,10 +1,20 @@
+"""
+BL Easy Crop - Easy cropping tool for Blender's Video Sequence Editor
+
+This addon provides an intuitive cropping interface for the VSE with visual handles
+and real-time preview. It's adapted from VSE Transform Tools for Blender 4.4+.
+
+Copyright (C) 2024 BL Easy Crop Contributors
+License: GPL-3.0-or-later
+"""
+
 bl_info = {
     "name": "BL Easy Crop",
     "description": "Easy cropping tool for Blender's Video Sequence Editor",
     "author": "Adapted from VSE Transform Tools",
     "version": (1, 0, 0),
     "blender": (4, 0, 0),
-    "location": "Sequencer > Preview",
+    "location": "Sequencer > Preview > Toolbar",
     "warning": "",
     "doc_url": "",
     "tracker_url": "",
@@ -16,29 +26,20 @@ from bpy.types import Operator, Panel, Menu, WorkSpaceTool
 
 # Import operators with better error reporting
 try:
-    from .operators.crop import EASYCROP_OT_crop
+    from .operators.crop import (
+        EASYCROP_OT_crop, 
+        EASYCROP_OT_select_and_crop, 
+        EASYCROP_OT_activate_tool, 
+        is_strip_visible_at_frame, 
+        _crop_active
+    )
     operators_imported = True
 except ImportError as e:
     print(f"BL Easy Crop: Import error: {e}")
     EASYCROP_OT_crop = None
+    EASYCROP_OT_select_and_crop = None
+    EASYCROP_OT_activate_tool = None
     operators_imported = False
-
-
-class EASYCROP_MT_menu(Menu):
-    """Main menu for Easy Crop tools"""
-    bl_label = "Easy Crop"
-    bl_idname = "EASYCROP_MT_menu"
-
-    @classmethod
-    def poll(cls, context):
-        st = context.space_data
-        return st.view_type in {'PREVIEW', 'SEQUENCER_PREVIEW'}
-
-    def draw(self, context):
-        layout = self.layout
-        layout.operator_context = 'INVOKE_REGION_PREVIEW'
-        
-        layout.operator("easycrop.crop", text="Crop Strip")
 
 
 class EASYCROP_TOOL_crop(WorkSpaceTool):
@@ -48,40 +49,64 @@ class EASYCROP_TOOL_crop(WorkSpaceTool):
     bl_idname = "easycrop.crop_tool"
     bl_label = "Crop"
     bl_description = "Crop strips in the preview"
-    bl_icon = "ops.mesh.knife_tool"
+    bl_icon = "ops.sequencer.blade"  # Best available icon
     bl_widget = None
+    
+    # More specific keymap - only trigger on areas where it makes sense
     bl_keymap = (
-        ("easycrop.crop", {"type": 'LEFTMOUSE', "value": 'PRESS'}, None),
+        # Primary crop activation - only when we have a suitable context
+        ("easycrop.select_and_crop", {"type": 'LEFTMOUSE', "value": 'PRESS'}, None),
     )
     
     @staticmethod  
     def draw_settings(context, layout, tool):
-        # Check if we should auto-activate
-        if (context.scene.sequence_editor and 
-            context.scene.sequence_editor.active_strip and
-            hasattr(context.scene.sequence_editor.active_strip, 'crop')):
-            try:
-                from .operators import crop
-                if not crop._crop_active:
-                    # Show a message that they need to click
-                    layout.label(text="Click in preview to start cropping", icon='INFO')
-            except:
-                pass
-
-
-# Menu append functions
-def add_menu_func(self, context):
-    st = context.space_data
-    if st and st.type == 'SEQUENCE_EDITOR':
-        if st.view_type in {'PREVIEW', 'SEQUENCER_PREVIEW'}:
-            self.layout.menu("EASYCROP_MT_menu")
-            self.layout.separator()
+        # Check current state and provide helpful feedback
+        seq_editor = context.scene.sequence_editor
+        if not seq_editor:
+            layout.label(text="No sequence editor", icon='ERROR')
+            return
+            
+        active_strip = seq_editor.active_strip
+        current_frame = context.scene.frame_current
+        
+        # Check if we have a valid active strip
+        if not active_strip:
+            layout.label(text="No active strip", icon='INFO')
+            layout.label(text="Select a strip to crop")
+            return
+            
+        # Check if active strip has crop capability
+        if not hasattr(active_strip, 'crop'):
+            layout.label(text="Active strip cannot be cropped", icon='INFO')
+            layout.label(text="Select an image/movie strip")
+            return
+            
+        # Check if active strip is visible at current frame
+        if not is_strip_visible_at_frame(active_strip, current_frame):
+            layout.label(text="Active strip not visible at current frame", icon='INFO')
+            layout.label(text="Move timeline to strip or select visible strip")
+            return
+            
+        # Strip is ready for cropping
+        if _crop_active:
+            layout.label(text="Crop mode active", icon='CHECKMARK')
+            layout.label(text="• Drag handles to crop")
+            layout.label(text="• Click other strips to switch")
+            layout.label(text="• Press Enter to finish")
+        else:
+            layout.label(text="Crop tool active", icon='CHECKMARK')
+            layout.label(text=f"Ready to crop: {active_strip.name}")
+            layout.label(text="Click strip in preview to start cropping")
+            layout.separator()
+            # Manual button as backup
+            layout.operator("easycrop.crop", text="Start Cropping Now")
 
 
 # Registration
 classes = [
     EASYCROP_OT_crop,
-    EASYCROP_MT_menu,
+    EASYCROP_OT_select_and_crop,
+    EASYCROP_OT_activate_tool,
 ]
 
 addon_keymaps = []
@@ -102,9 +127,6 @@ def register():
             except Exception as e:
                 print(f"BL Easy Crop: Failed to register {cls.__name__}: {e}")
     
-    # Add menu entries
-    bpy.types.SEQUENCER_MT_editor_menus.append(add_menu_func)
-    
     # Register keymaps
     wm = bpy.context.window_manager
     kc = wm.keyconfigs.addon
@@ -121,10 +143,12 @@ def register():
         kmi2 = km2.keymap_items.new("easycrop.crop", 'C', 'PRESS')
         addon_keymaps.append((km2, kmi2))
     
-    # Register the tool - place it after transform tool
+    # Register the tool - place it right after transform tool
     try:
-        bpy.utils.register_tool(EASYCROP_TOOL_crop, after={"builtin.transform"}, separator=False, group=True)
+        # Use the exact builtin tool identifier and specify no separator
+        bpy.utils.register_tool(EASYCROP_TOOL_crop, after={"builtin.transform"}, separator=False)
     except Exception as e:
+        print(f"BL Easy Crop: Tool placement failed: {e}")
         # Fallback to simple registration if placement fails
         try:
             bpy.utils.register_tool(EASYCROP_TOOL_crop)
@@ -139,6 +163,17 @@ def unregister():
         from .operators import crop
         crop._crop_active = False
         crop._draw_data.clear()
+    except:
+        pass
+    
+    # Force restore gizmos in case they were disabled
+    try:
+        import bpy
+        for area in bpy.context.screen.areas:
+            if area.type == 'SEQUENCE_EDITOR':
+                for space in area.spaces:
+                    if space.type == 'SEQUENCE_EDITOR' and hasattr(space, 'show_gizmo'):
+                        space.show_gizmo = True
     except:
         pass
     
@@ -161,9 +196,6 @@ def unregister():
     for km, kmi in addon_keymaps:
         km.keymap_items.remove(kmi)
     addon_keymaps.clear()
-    
-    # Remove menu entries
-    bpy.types.SEQUENCER_MT_editor_menus.remove(add_menu_func)
     
     # Unregister classes
     for cls in reversed(classes):

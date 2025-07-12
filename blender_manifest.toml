@@ -1,39 +1,70 @@
 # blender_manifest.toml
 # Manifest file for the BL Easy Crop Extension
 
+# Blender Extension Manifest
 schema_version = "1.0.0"
 id = "BL_EasyCrop"
 version = "1.0.0"
 
 name = "BL Easy Crop"
-author = "Claude"
-maintainer = "usrname0"
-tagline = "Easy cropping tool for Blender's Video Sequence Editor"
+tagline = "Easier cropping for Blender's Video Sequence Editor."
 type = "add-on"
+
+# Author and maintainer info
+author = "usrname0"
+maintainer = "usrname0 <your.email@example.com>"
+
+# Links
 website = "https://github.com/usrname0/BL_EasyCrop"
 
-blender_version_min = "4.4.0"
+# Description - must be clear about all functionality
+description = """A simplified cropping interface for the built-in crop in Blender's Video Sequence Editor (VSE).
 
+Features:
+• Interactive corner and edge handle cropping with real-time preview
+• Visual feedback with colored handles and crop symbol
+• Strip selection directly in the preview window  
+• Seamless switching between strips while cropping
+• Keyboard shortcut (C) for quick access
+• Respects user's custom transform keybindings
+• Works with all strip types that support cropping
+
+Usage:
+1. Select the crop tool from the VSE preview toolbar
+2. Click on any strip to select and crop it
+3. Drag corner or edge handles to adjust the crop
+4. Click another strip to switch to it
+5. Click outside handles to exit crop mode"""
+
+# Requirements
+blender_version_min = "4.4.0"
+# blender_version_max = "4.9.999"  # Optional upper bound
+
+# License - must be GPL compatible
 license = ["SPDX:GPL-3.0-or-later"]
 
+# Copyright notices
 copyright = [
-    "2025 usrname0"
+    "2025 usrname0",
+    "2007 Original VSE Transform Tools by kgeogeo, DoubleZ, doakey3, NathanLovato",
 ]
 
-description = """A visual interface for Blender's built-in crop function.  
-	With this extension crop looks and behaves more like the other transforms (scale, rotate, move, transform)."""
+# Tags for discoverability
+tags = ["Sequencer", "Video Editing", "Transform", "Crop", "VSE"]
 
-tags = ["Sequencer", "User Interface"]
-
+# Build configuration
 [build]
 paths_exclude_pattern = [
     "__pycache__/",
+    "*.pyc",
+    ".*",
     "/.git/",
     "/.gitignore",
+    "/.github/",
+    "/docs/",
+    "/tests/",
     "/README.md",
-    "/*.zip",
-    "/test_addon.py",
     "/DEVELOPMENT.md",
+    "/*.zip",
     "/.vscode/",
-    "/pyproject.toml",
 ]
