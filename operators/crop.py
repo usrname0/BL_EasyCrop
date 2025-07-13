@@ -90,12 +90,10 @@ def get_strip_geometry_with_flip_support(strip, scene):
             scale_x = strip.transform.scale_x
             scale_y = strip.transform.scale_y
     
-    # Check for Mirror X/Y checkboxes (flip transforms)
+    # Check for Mirror X/Y checkboxes
     flip_x = False
     flip_y = False
     
-    # These could be named differently in different Blender versions
-    # Common property names for flipping in VSE
     if hasattr(strip, 'use_flip_x'):
         flip_x = strip.use_flip_x
     elif hasattr(strip, 'flip_x'):
@@ -119,9 +117,9 @@ def get_strip_geometry_with_flip_support(strip, scene):
     elif hasattr(strip, 'transform') and hasattr(strip.transform, 'rotation'):
         angle = strip.transform.rotation
     
-    # Get crop values - these are always in original image coordinates
+    # Get crop values
     crop_left = 0
-    crop_right = 0  
+    crop_right = 0
     crop_bottom = 0
     crop_top = 0
     
@@ -131,55 +129,40 @@ def get_strip_geometry_with_flip_support(strip, scene):
         crop_bottom = float(strip.crop.min_y)
         crop_top = float(strip.crop.max_y)
     
-    # Calculate the rotation pivot (center of original strip)
+    # Calculate scaled dimensions
+    scaled_width = strip_width * scale_x
+    scaled_height = strip_height * scale_y
+    
+    # Calculate position (centered by default, then offset)
+    left = (res_x - scaled_width) / 2 + offset_x
+    right = (res_x + scaled_width) / 2 + offset_x
+    bottom = (res_y - scaled_height) / 2 + offset_y
+    top = (res_y + scaled_height) / 2 + offset_y
+    
+    # Apply crop - crop values are in original image space, so scale them
+    left += crop_left * scale_x
+    right -= crop_right * scale_x
+    bottom += crop_bottom * scale_y
+    top -= crop_top * scale_y
+    
+    # Calculate pivot point for rotation
     pivot_x = res_x / 2 + offset_x
     pivot_y = res_y / 2 + offset_y
     
-    # Start with the cropped area in original image coordinates
-    cropped_left = crop_left
-    cropped_right = strip_width - crop_right
-    cropped_bottom = crop_bottom  
-    cropped_top = strip_height - crop_top
-    
-    # Calculate the size of the cropped area
-    cropped_width = cropped_right - cropped_left
-    cropped_height = cropped_top - cropped_bottom
-    
-    # Apply scale to the cropped dimensions
-    scaled_width = cropped_width * scale_x
-    scaled_height = cropped_height * scale_y
-    
-    # Calculate center positions accounting for flip checkboxes
-    original_center_x = strip_width / 2
-    original_center_y = strip_height / 2
-    
-    # Center of the cropped area in original coordinates
-    cropped_center_x = (cropped_left + cropped_right) / 2
-    cropped_center_y = (cropped_bottom + cropped_top) / 2
-    
-    # Offset from original center to cropped center
-    offset_from_center_x = cropped_center_x - original_center_x
-    offset_from_center_y = cropped_center_y - original_center_y
-    
-    # Apply scale transform
-    scaled_offset_x = offset_from_center_x * scale_x
-    scaled_offset_y = offset_from_center_y * scale_y
-    
-    # Apply flip transforms (Mirror X/Y checkboxes)
+    # When flipped, mirror the box position around the render center
     if flip_x:
-        scaled_offset_x = -scaled_offset_x  # Flip horizontally
+        # Mirror horizontally around the center
+        new_left = res_x - right
+        new_right = res_x - left
+        left = new_left
+        right = new_right
+    
     if flip_y:
-        scaled_offset_y = -scaled_offset_y  # Flip vertically
-    
-    # Final position of cropped area center in resolution space
-    final_center_x = pivot_x + scaled_offset_x
-    final_center_y = pivot_y + scaled_offset_y
-    
-    # Calculate the bounds of the visible cropped area
-    left = final_center_x - scaled_width / 2
-    right = final_center_x + scaled_width / 2
-    bottom = final_center_y - scaled_height / 2
-    top = final_center_y + scaled_height / 2
+        # Mirror vertically around the center
+        new_bottom = res_y - top
+        new_top = res_y - bottom
+        bottom = new_bottom
+        top = new_top
     
     # Create corner vectors
     corners = [
@@ -189,7 +172,7 @@ def get_strip_geometry_with_flip_support(strip, scene):
         Vector((right, bottom))  # Bottom-right
     ]
     
-    # Apply rotation if needed
+    # Apply rotation if needed (rotation happens after flip)
     if angle != 0:
         center = Vector((pivot_x, pivot_y))
         rotated_corners = []
@@ -239,7 +222,7 @@ def draw_crop_handles():
     handle_color = (1.0, 1.0, 1.0, 0.7)  # Slightly transparent white
     line_color = (1.0, 1.0, 1.0, 0.5)    # More transparent for lines
     
-    # Use the new flip-aware geometry calculation
+    # ALWAYS recalculate geometry to get current crop values
     corners, (pivot_x, pivot_y), (scale_x, scale_y, flip_x, flip_y) = get_strip_geometry_with_flip_support(strip, scene)
     
     # Calculate edge midpoints (after rotation)
@@ -288,6 +271,12 @@ def draw_crop_handles():
     # Calculate center in screen space
     original_center_x = pivot_x  # Already calculated as rotation pivot
     original_center_y = pivot_y
+    
+    # Apply flip to the symbol position to follow the visual content
+    if flip_x:
+        original_center_x = res_x - original_center_x
+    if flip_y:
+        original_center_y = res_y - original_center_y
     
     # Transform to screen coordinates
     screen_center = view2d.view_to_region(
@@ -654,6 +643,11 @@ class EASYCROP_OT_crop(bpy.types.Operator):
         
         elif event.type == 'MOUSEMOVE' and self.active_corner >= 0:
             self.update_crop(context, event)
+            # Force immediate redraw to show the changes
+            for area in context.screen.areas:
+                if area.type == 'SEQUENCE_EDITOR':
+                    area.tag_redraw()
+            return {'RUNNING_MODAL'}
         
         elif event.type in {'RET', 'NUMPAD_ENTER'}:
             # Exit crop mode on Enter
