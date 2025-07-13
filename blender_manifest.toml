@@ -7,12 +7,12 @@ id = "BL_EasyCrop"
 version = "1.0.0"
 
 name = "BL Easy Crop"
-tagline = "Easier cropping for Blender's Video Sequence Editor."
+tagline = "Easier cropping for Blender's Video Sequence Editor"
 type = "add-on"
 
 # Author and maintainer info
 author = "usrname0"
-maintainer = "usrname0 <your.email@example.com>"
+maintainer = "usrname0"
 
 # Links
 website = "https://github.com/usrname0/BL_EasyCrop"
@@ -22,7 +22,6 @@ description = """A simplified cropping interface for the built-in crop in Blende
 
 Features:
 • Interactive corner and edge handle cropping with real-time preview
-• Visual feedback with colored handles and crop symbol
 • Strip selection directly in the preview window  
 • Seamless switching between strips while cropping
 • Keyboard shortcut (C) for quick access
@@ -50,7 +49,7 @@ copyright = [
 ]
 
 # Tags for discoverability
-tags = ["Sequencer", "Video Editing", "Transform", "Crop", "VSE"]
+tags = ["Sequencer", "User Interface"]
 
 # Build configuration
 [build]
@@ -61,6 +60,7 @@ paths_exclude_pattern = [
     "/.git/",
     "/.gitignore",
     "/.github/",
+	"/icons/",
     "/docs/",
     "/tests/",
     "/README.md",

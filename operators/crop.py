@@ -156,6 +156,8 @@ def get_strip_geometry_with_flip_support(strip, scene):
         new_right = res_x - left
         left = new_left
         right = new_right
+        # Also flip the pivot point!
+        pivot_x = res_x - pivot_x
     
     if flip_y:
         # Mirror vertically around the center
@@ -163,6 +165,8 @@ def get_strip_geometry_with_flip_support(strip, scene):
         new_top = res_y - bottom
         bottom = new_bottom
         top = new_top
+        # Also flip the pivot point!
+        pivot_y = res_y - pivot_y
     
     # Create corner vectors
     corners = [
@@ -174,6 +178,10 @@ def get_strip_geometry_with_flip_support(strip, scene):
     
     # Apply rotation if needed (rotation happens after flip)
     if angle != 0:
+        # When flipped, rotation direction is reversed
+        if flip_x != flip_y:  # XOR - if only one axis is flipped
+            angle = -angle
+        
         center = Vector((pivot_x, pivot_y))
         rotated_corners = []
         for corner in corners:
@@ -844,6 +852,10 @@ class EASYCROP_OT_crop(bpy.types.Operator):
             angle = -math.radians(strip.rotation_start)  # Negative to reverse rotation, convert from degrees
         elif hasattr(strip, 'transform') and hasattr(strip.transform, 'rotation'):
             angle = -strip.transform.rotation  # Already in radians, just negate
+        
+        # When flipped, rotation direction is reversed
+        if flip_x != flip_y:  # XOR - if only one axis is flipped
+            angle = -angle
         
         # Rotate the delta if strip is rotated
         if angle != 0:
