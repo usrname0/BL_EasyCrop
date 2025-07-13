@@ -1,6 +1,6 @@
 # BL Easy Crop
 
-BL Easy Crop adds handles to a selected strip to change Blender's native crop paramaters from the Visual Sequence Editor / preview window.
+BL Easy Crop lets you click and drag handles to crop in Blender's Visual Sequence Editor / preview window.
 With this extension crop looks and behaves a bit more like the other transforms: rotate, scale, move, transform.
 It lives alongside the other transforms on the toolbar and has a keyboard shortcut "C".
 After clicking the toolbar button you click on a strip to get your handles and start cropping.
