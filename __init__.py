@@ -30,8 +30,10 @@ try:
         EASYCROP_OT_crop, 
         EASYCROP_OT_select_and_crop, 
         EASYCROP_OT_activate_tool, 
-        is_strip_visible_at_frame, 
-        _crop_active
+        is_strip_visible_at_frame,
+        get_crop_state,
+        set_crop_active,
+        clear_crop_state
     )
     operators_imported = True
 except ImportError as e:
@@ -88,7 +90,8 @@ class EASYCROP_TOOL_crop(WorkSpaceTool):
             return
             
         # Strip is ready for cropping
-        if _crop_active:
+        crop_state = get_crop_state()
+        if crop_state['active']:
             layout.label(text="Crop mode active", icon='CHECKMARK')
             layout.label(text="• Drag handles to crop")
             layout.label(text="• Click other strips to switch")
@@ -160,9 +163,7 @@ def unregister():
     """Unregister the addon"""
     # Force cleanup of any active crop mode
     try:
-        from .operators import crop
-        crop._crop_active = False
-        crop._draw_data.clear()
+        clear_crop_state()
     except:
         pass
     
@@ -185,10 +186,9 @@ def unregister():
     
     # Clean up any lingering draw handlers
     try:
-        from .operators import crop
-        if hasattr(crop, '_draw_handle') and crop._draw_handle is not None:
-            bpy.types.SpaceSequenceEditor.draw_handler_remove(crop._draw_handle, 'PREVIEW')
-            crop._draw_handle = None
+        from .operators.crop_core import get_draw_handle
+        if get_draw_handle() is not None:
+            bpy.types.SpaceSequenceEditor.draw_handler_remove(get_draw_handle(), 'PREVIEW')
     except:
         pass
     
