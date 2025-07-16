@@ -1,8 +1,8 @@
 """
-BL Easy Crop - Operators and interaction handling
+BL Easy Crop - Operators with improved context detection
 
-This module contains all the Blender operators and user interaction logic
-for the crop tool.
+This module contains the updated operators with better context detection
+and debugging for menu integration issues.
 """
 
 import bpy
@@ -220,6 +220,8 @@ class EASYCROP_OT_crop(bpy.types.Operator):
                     return self.finish(context)
         
         elif event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
+            if self.active_corner >= 0:
+                pass  # Handle release silently
             self.active_corner = -1
             draw_data['active_corner'] = -1
             set_draw_data(draw_data)

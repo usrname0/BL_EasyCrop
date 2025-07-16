@@ -7,7 +7,9 @@ from .crop import (
     EASYCROP_OT_select_and_crop, 
     EASYCROP_OT_activate_tool,
     is_strip_visible_at_frame,
-    _crop_active
+    get_crop_state,
+    set_crop_active,
+    clear_crop_state
 )
 
 __all__ = [
@@ -16,5 +18,7 @@ __all__ = [
     'EASYCROP_OT_select_and_crop', 
     'EASYCROP_OT_activate_tool',
     'is_strip_visible_at_frame',
-    '_crop_active'
+    'get_crop_state',
+    'set_crop_active',
+    'clear_crop_state'
 ]

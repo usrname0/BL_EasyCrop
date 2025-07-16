@@ -1,18 +1,19 @@
 """
-BL Easy Crop - Easy cropping tool for Blender's Video Sequence Editor
+BL Easy Crop - Clean, simple version
 
-This addon provides an intuitive cropping interface for the VSE with visual handles
-and real-time preview. It's adapted from VSE Transform Tools for Blender 4.4+.
-
-Copyright (C) 2024 BL Easy Crop Contributors
-License: GPL-3.0-or-later
+This version includes:
+- Working menu integration with INVOKE_REGION_PREVIEW fix
+- Simple toolbar tool (standard Blender behavior)
+- No overcomplicated auto-activation experiments
 """
+
+# ===== __init__.py =====
 
 bl_info = {
     "name": "BL Easy Crop",
     "description": "Easy cropping tool for Blender's Video Sequence Editor",
     "author": "Adapted from VSE Transform Tools",
-    "version": (1, 0, 0),
+    "version": (1, 1, 0),
     "blender": (4, 0, 0),
     "location": "Sequencer > Preview > Toolbar",
     "warning": "",
@@ -44,6 +45,43 @@ except ImportError as e:
     operators_imported = False
 
 
+# Clear crop operator for Image > Clear menu
+class EASYCROP_OT_clear_crop(bpy.types.Operator):
+    """Clear crop from selected strips"""
+    bl_idname = "easycrop.clear_crop"
+    bl_label = "Clear Crop"
+    bl_description = "Clear crop from all selected strips"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    @classmethod
+    def poll(cls, context):
+        if not context.scene.sequence_editor:
+            return False
+        
+        # Check if any selected strips have crop capability
+        for strip in context.selected_sequences:
+            if hasattr(strip, 'crop'):
+                return True
+        return False
+    
+    def execute(self, context):
+        cleared_count = 0
+        
+        for strip in context.selected_sequences:
+            if hasattr(strip, 'crop') and strip.crop:
+                # Reset all crop values to 0
+                strip.crop.min_x = 0
+                strip.crop.max_x = 0
+                strip.crop.min_y = 0
+                strip.crop.max_y = 0
+                cleared_count += 1
+        
+        if cleared_count > 0:
+            self.report({'INFO'}, f"Cleared crop from {cleared_count} strip(s)")
+        else:
+            self.report({'INFO'}, "No strips with crop found")
+        
+        return {'FINISHED'}
 class EASYCROP_TOOL_crop(WorkSpaceTool):
     bl_space_type = 'SEQUENCE_EDITOR'
     bl_context_mode = 'PREVIEW'
@@ -51,65 +89,73 @@ class EASYCROP_TOOL_crop(WorkSpaceTool):
     bl_idname = "easycrop.crop_tool"
     bl_label = "Crop"
     bl_description = "Crop strips in the preview"
-    bl_icon = "ops.sequencer.blade"  # Best available icon
+    bl_icon = "ops.sequencer.blade"
     bl_widget = None
     
-    # More specific keymap - only trigger on areas where it makes sense
+    # Standard tool behavior - click to use crop
     bl_keymap = (
-        # Primary crop activation - only when we have a suitable context
         ("easycrop.select_and_crop", {"type": 'LEFTMOUSE', "value": 'PRESS'}, None),
     )
     
     @staticmethod  
     def draw_settings(context, layout, tool):
-        # Check current state and provide helpful feedback
+        # Simple status display
         seq_editor = context.scene.sequence_editor
         if not seq_editor:
-            layout.label(text="No sequence editor", icon='ERROR')
+            layout.label(text="No sequence editor")
             return
             
         active_strip = seq_editor.active_strip
         current_frame = context.scene.frame_current
         
-        # Check if we have a valid active strip
-        if not active_strip:
-            layout.label(text="No active strip", icon='INFO')
-            layout.label(text="Select a strip to crop")
-            return
-            
-        # Check if active strip has crop capability
-        if not hasattr(active_strip, 'crop'):
-            layout.label(text="Active strip cannot be cropped", icon='INFO')
-            layout.label(text="Select an image/movie strip")
-            return
-            
-        # Check if active strip is visible at current frame
-        if not is_strip_visible_at_frame(active_strip, current_frame):
-            layout.label(text="Active strip not visible at current frame", icon='INFO')
-            layout.label(text="Move timeline to strip or select visible strip")
-            return
-            
-        # Strip is ready for cropping
+        # Show current state
         crop_state = get_crop_state()
         if crop_state['active']:
             layout.label(text="Crop mode active", icon='CHECKMARK')
             layout.label(text="• Drag handles to crop")
             layout.label(text="• Click other strips to switch")
             layout.label(text="• Press Enter to finish")
+        elif active_strip and hasattr(active_strip, 'crop'):
+            if is_strip_visible_at_frame(active_strip, current_frame):
+                layout.label(text=f"Ready: {active_strip.name}")
+                layout.label(text="Click strip in preview to start cropping")
+            else:
+                layout.label(text="Strip not at current frame")
         else:
-            layout.label(text="Crop tool active", icon='CHECKMARK')
-            layout.label(text=f"Ready to crop: {active_strip.name}")
-            layout.label(text="Click strip in preview to start cropping")
-            layout.separator()
-            # Manual button as backup
-            layout.operator("easycrop.crop", text="Start Cropping Now")
+            layout.label(text="Select a croppable strip")
 
 
-# Registration
+# Function to add menu to Strip > Transform menu
+def menu_func_strip_transform(self, context):
+    """Add Easy Crop to Strip > Transform menu"""
+    if context.space_data.view_type in {'PREVIEW', 'SEQUENCER_PREVIEW'}:
+        # Use preview region context here
+        self.layout.operator_context = 'INVOKE_REGION_PREVIEW'
+        self.layout.operator("easycrop.crop", text="Crop")
+
+
+# Function to add menu to Image > Transform menu
+def menu_func_image_transform(self, context):
+    """Add Easy Crop to Image > Transform menu"""
+    if context.space_data.view_type in {'PREVIEW', 'SEQUENCER_PREVIEW'}:
+        # Use preview region context here
+        self.layout.operator_context = 'INVOKE_REGION_PREVIEW'
+        self.layout.operator("easycrop.crop", text="Crop")
+
+
+# Function to add clear crop to Image > Clear menu  
+def menu_func_image_clear(self, context):
+    """Add Clear Crop to Image > Clear menu"""
+    if context.space_data.view_type in {'PREVIEW', 'SEQUENCER_PREVIEW'}:
+        self.layout.operator("easycrop.clear_crop", text="Crop")
+
+
+# Registration - clean and simple
 classes = [
     EASYCROP_OT_crop,
     EASYCROP_OT_select_and_crop,
     EASYCROP_OT_activate_tool,
+    EASYCROP_OT_clear_crop,  # New clear crop operator
 ]
 
 addon_keymaps = []
@@ -157,6 +203,21 @@ def register():
             bpy.utils.register_tool(EASYCROP_TOOL_crop)
         except Exception as e2:
             print(f"BL Easy Crop: Tool registration failed: {e2}")
+    
+    # Add menu items
+    try:
+        # Add to Strip > Transform menu
+        bpy.types.SEQUENCER_MT_strip_transform.append(menu_func_strip_transform)
+        
+        # Add to Image > Transform menu
+        bpy.types.SEQUENCER_MT_image_transform.append(menu_func_image_transform)
+        
+        # Add to Image > Clear menu
+        bpy.types.SEQUENCER_MT_image_clear.append(menu_func_image_clear)
+        
+        print("BL Easy Crop: Menu integration registered successfully")
+    except Exception as e:
+        print(f"BL Easy Crop: Menu integration failed: {e}")
 
 
 def unregister():
@@ -175,6 +236,14 @@ def unregister():
                 for space in area.spaces:
                     if space.type == 'SEQUENCE_EDITOR' and hasattr(space, 'show_gizmo'):
                         space.show_gizmo = True
+    except:
+        pass
+    
+    # Remove menu items
+    try:
+        bpy.types.SEQUENCER_MT_strip_transform.remove(menu_func_strip_transform)
+        bpy.types.SEQUENCER_MT_image_transform.remove(menu_func_image_transform)
+        bpy.types.SEQUENCER_MT_image_clear.remove(menu_func_image_clear)
     except:
         pass
     
