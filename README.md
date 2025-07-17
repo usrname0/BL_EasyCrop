@@ -7,6 +7,8 @@ It can be accesed via the preview window toolbar, menus or keyboard shortcut (de
 
  ![demo](./examples/easycrop-demo1.png)
 
+Quick breakdown of menu options, etc:
+
  ![demo](./examples/easycrop-menu.png)
 
 ## Compatibility
@@ -27,7 +29,7 @@ Download the [zip](https://github.com/usrname0/BL_EasyCrop/releases/tag/v1.0.0).
    
 ## Troubleshooting
 
-If the addon doesn't appear after installation:
+It should just work right away after installing.  If the addon doesn't appear after installation:
 1. Make sure you're using Blender 4.4 or newer
 2. Check the console for any error messages
 3. Try restarting Blender after installation
