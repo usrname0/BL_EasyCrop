@@ -1,8 +1,8 @@
 """
-BL Easy Crop - Operators with improved context detection
+BL Easy Crop - Operators with improved keybinding detection
 
-This module contains the updated operators with better context detection
-and debugging for menu integration issues.
+This module contains the updated operators with better keybinding detection
+that checks multiple keymap sources to find user's custom transform bindings.
 """
 
 import bpy
@@ -34,7 +34,9 @@ class EASYCROP_OT_crop(bpy.types.Operator):
         # Check if we're in preview mode
         space = context.space_data
         if space and space.type == 'SEQUENCE_EDITOR':
-            if space.view_type not in {'PREVIEW', 'SEQUENCER_PREVIEW'}:
+            # Type hint for Pylance
+            space_seq: 'SpaceSequenceEditor' = space  # type: ignore
+            if space_seq.view_type not in {'PREVIEW', 'SEQUENCER_PREVIEW'}:
                 return False
         
         # Just need any selected strip with crop capability
@@ -108,9 +110,10 @@ class EASYCROP_OT_crop(bpy.types.Operator):
         # Store the current transform overlay state so we can restore it later
         self.prev_show_gizmo = None
         if hasattr(context.space_data, 'show_gizmo'):
-            self.prev_show_gizmo = context.space_data.show_gizmo
+            space_seq: 'SpaceSequenceEditor' = context.space_data  # type: ignore
+            self.prev_show_gizmo = space_seq.show_gizmo
             # Hide transform gizmos while cropping to avoid conflicts
-            context.space_data.show_gizmo = False
+            space_seq.show_gizmo = False
         
         # Clean up any existing handler first (safety check for lingering state)
         if get_draw_handle() is not None:
@@ -132,12 +135,16 @@ class EASYCROP_OT_crop(bpy.types.Operator):
         
         # Store the initial crop values
         if strip and hasattr(strip, 'crop') and strip.crop:
-            self.crop_start = (
-                strip.crop.min_x,
-                strip.crop.max_x,
-                strip.crop.min_y,
-                strip.crop.max_y
-            )
+            crop_data = getattr(strip, 'crop', None)  # type: ignore
+            if crop_data:
+                self.crop_start = (
+                    crop_data.min_x,
+                    crop_data.max_x,
+                    crop_data.min_y,
+                    crop_data.max_y
+                )
+            else:
+                self.crop_start = (0, 0, 0, 0)
         else:
             self.crop_start = (0, 0, 0, 0)
         
@@ -183,13 +190,17 @@ class EASYCROP_OT_crop(bpy.types.Operator):
                 set_draw_data(draw_data)
                 self.mouse_start = (event.mouse_region_x, event.mouse_region_y)
                 # Store current crop values for this drag
-                if strip and hasattr(strip, 'crop') and strip.crop:
-                    self.crop_start = (
-                        strip.crop.min_x,
-                        strip.crop.max_x,
-                        strip.crop.min_y,
-                        strip.crop.max_y
-                    )
+                if strip and hasattr(strip, 'crop'):
+                    crop_data = getattr(strip, 'crop', None)  # type: ignore
+                    if crop_data:
+                        self.crop_start = (
+                            crop_data.min_x,
+                            crop_data.max_x,
+                            crop_data.min_y,
+                            crop_data.max_y
+                        )
+                    else:
+                        self.crop_start = (0, 0, 0, 0)
                 else:
                     self.crop_start = (0, 0, 0, 0)
             else:
@@ -213,7 +224,7 @@ class EASYCROP_OT_crop(bpy.types.Operator):
                     context.scene.sequence_editor.active_strip = clicked_strip
                     # Re-activate crop on the new strip
                     if hasattr(clicked_strip, 'crop'):
-                        bpy.ops.easycrop.crop('INVOKE_DEFAULT')
+                        bpy.ops.easycrop.crop('INVOKE_DEFAULT')  # type: ignore
                     return {'FINISHED'}
                 else:
                     # Clicking outside any strip or on same strip - just exit crop mode
@@ -240,26 +251,31 @@ class EASYCROP_OT_crop(bpy.types.Operator):
         
         elif event.type == 'ESC':
             # Restore original crop values
-            if strip and hasattr(strip, 'crop') and strip.crop:
-                strip.crop.min_x = int(self.crop_start[0])
-                strip.crop.max_x = int(self.crop_start[1])
-                strip.crop.min_y = int(self.crop_start[2])
-                strip.crop.max_y = int(self.crop_start[3])
+            if strip and hasattr(strip, 'crop'):
+                crop_data = getattr(strip, 'crop', None)  # type: ignore
+                if crop_data:
+                    crop_data.min_x = int(self.crop_start[0])
+                    crop_data.max_x = int(self.crop_start[1])
+                    crop_data.min_y = int(self.crop_start[2])
+                    crop_data.max_y = int(self.crop_start[3])
             return self.finish(context, cancelled=True)
         
-        # Check for transform operators dynamically
         elif self.is_transform_key(context, event):
             # Exit crop mode and activate the transform
-            self.finish(context)
-            # Find which transform operator to invoke
             transform_op = self.get_transform_operator(context, event)
             if transform_op:
-                if transform_op == 'transform.translate':
-                    bpy.ops.transform.translate('INVOKE_DEFAULT')
-                elif transform_op == 'transform.resize':
-                    bpy.ops.transform.resize('INVOKE_DEFAULT')
-                elif transform_op == 'transform.rotate':
-                    bpy.ops.transform.rotate('INVOKE_DEFAULT')
+                self.finish(context)
+                # Invoke the actual operator the user has bound to this key
+                operator_parts = transform_op.split('.')
+                if len(operator_parts) == 2:
+                    category, name = operator_parts
+                    try:
+                        op = getattr(getattr(bpy.ops, category), name)
+                        # Use INVOKE_DEFAULT to let Blender handle the transform properly
+                        op('INVOKE_DEFAULT')
+                    except AttributeError:
+                        # Fallback if operator doesn't exist
+                        pass
             return {'FINISHED'}
         
         elif event.type in {'MIDDLEMOUSE', 'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}:
@@ -274,7 +290,8 @@ class EASYCROP_OT_crop(bpy.types.Operator):
         
         # Restore transform gizmo visibility
         if hasattr(self, 'prev_show_gizmo') and self.prev_show_gizmo is not None and hasattr(context.space_data, 'show_gizmo'):
-            context.space_data.show_gizmo = self.prev_show_gizmo
+            space_seq: 'SpaceSequenceEditor' = context.space_data  # type: ignore
+            space_seq.show_gizmo = self.prev_show_gizmo
         
         # Remove timer
         if hasattr(self, 'timer') and self.timer:
@@ -564,48 +581,130 @@ class EASYCROP_OT_crop(bpy.types.Operator):
                     strip.crop.min_y = new_min_y
     
     def is_transform_key(self, context, event):
-        """Check if the pressed key is bound to a transform operator"""
+        """Check if the pressed key is bound to a transform operator - NOW CHECKING USER KEYCONFIG!"""
         if event.value != 'PRESS':
             return False
-            
-        # Get the active keyconfig
-        wm = context.window_manager
-        kc = wm.keyconfigs.active
         
-        # Check common transform operators
+        print(f"\n=== CHECKING USER KEYCONFIG ===")
+        print(f"Looking for key: {event.type}, shift={event.shift}, ctrl={event.ctrl}, alt={event.alt}")
+        
+        # Get the window manager and keyconfigs
+        wm = context.window_manager
+        
+        # KEY INSIGHT: Check keyconfigs.user instead of keyconfigs.active!
+        # User customizations are stored in the user keyconfig
+        kc_user = wm.keyconfigs.user
+        kc_active = wm.keyconfigs.active
+        
+        print(f"Active keyconfig: {kc_active.name}")
+        print(f"User keyconfig: {kc_user.name}")
+        
         transform_ops = ['transform.translate', 'transform.resize', 'transform.rotate']
         
-        # Look through keymaps for transform operators
-        for keymap_name in ['Sequencer', 'SequencerPreview']:
-            if keymap_name in kc.keymaps:
-                km = kc.keymaps[keymap_name]
-                for kmi in km.keymap_items:
-                    if kmi.active and kmi.idname in transform_ops:
-                        if (kmi.type == event.type and 
-                            kmi.shift == event.shift and
-                            kmi.ctrl == event.ctrl and
-                            kmi.alt == event.alt):
-                            return True
+        # Check USER keyconfig first (where customizations live)
+        print(f"\n=== CHECKING USER KEYCONFIG KEYMAPS ===")
+        keymaps_to_check = []
         
+        # 1. SequencerPreview in user keyconfig
+        preview_km = kc_user.keymaps.find('SequencerPreview', space_type='SEQUENCE_EDITOR', region_type='WINDOW')
+        if preview_km:
+            print(f"Found USER SequencerPreview: {preview_km.name}")
+            keymaps_to_check.append(('USER SequencerPreview', preview_km))
+        
+        # 2. Sequencer in user keyconfig
+        sequencer_km = kc_user.keymaps.find('Sequencer', space_type='SEQUENCE_EDITOR', region_type='WINDOW')
+        if sequencer_km:
+            print(f"Found USER Sequencer: {sequencer_km.name}")
+            keymaps_to_check.append(('USER Sequencer', sequencer_km))
+        
+        # 3. Window in user keyconfig
+        window_km = kc_user.keymaps.find('Window', space_type='EMPTY', region_type='WINDOW')
+        if window_km:
+            print(f"Found USER Window: {window_km.name}")
+            keymaps_to_check.append(('USER Window', window_km))
+        
+        # Also check active keyconfig as fallback
+        print(f"\n=== CHECKING ACTIVE KEYCONFIG KEYMAPS ===")
+        
+        # 4. SequencerPreview in active keyconfig
+        preview_km_active = kc_active.keymaps.find('SequencerPreview', space_type='SEQUENCE_EDITOR', region_type='WINDOW')
+        if preview_km_active:
+            print(f"Found ACTIVE SequencerPreview: {preview_km_active.name}")
+            keymaps_to_check.append(('ACTIVE SequencerPreview', preview_km_active))
+        
+        # Show detailed transform analysis
+        print(f"\n=== DETAILED TRANSFORM ANALYSIS ===")
+        for km_name, km in keymaps_to_check:
+            print(f"\n--- {km_name} ---")
+            transform_count = 0
+            for kmi in km.keymap_items:
+                if kmi.idname in transform_ops:
+                    print(f"  {kmi.idname} -> {kmi.type} (shift={kmi.shift}, ctrl={kmi.ctrl}, alt={kmi.alt}, active={kmi.active})")
+                    transform_count += 1
+            print(f"  Total transform ops: {transform_count}")
+        
+        # Check for exact matches
+        print(f"\n--- Looking for exact matches ---")
+        for km_name, km in keymaps_to_check:
+            for kmi in km.keymap_items:
+                if (kmi.active and 
+                    kmi.idname in transform_ops and
+                    kmi.type == event.type and 
+                    kmi.shift == event.shift and
+                    kmi.ctrl == event.ctrl and
+                    kmi.alt == event.alt and
+                    kmi.oskey == event.oskey):
+                    print(f"MATCH FOUND in {km_name}: {kmi.idname}")
+                    return True
+        
+        print(f"No matches found")
+        print(f"=== END USER KEYCONFIG CHECK ===\n")
         return False
     
     def get_transform_operator(self, context, event):
-        """Get which transform operator is bound to the pressed key"""
-        # Get the active keyconfig
+        """Get which transform operator is bound to the pressed key - NOW CHECKING USER KEYCONFIG!"""
+        # Get the window manager and keyconfigs
         wm = context.window_manager
-        kc = wm.keyconfigs.active
         
-        # Look through keymaps for transform operators
-        for keymap_name in ['Sequencer', 'SequencerPreview']:
-            if keymap_name in kc.keymaps:
-                km = kc.keymaps[keymap_name]
+        # Check BOTH user and active keyconfigs
+        kc_user = wm.keyconfigs.user
+        kc_active = wm.keyconfigs.active
+        
+        transform_ops = ['transform.translate', 'transform.resize', 'transform.rotate']
+        
+        # Priority order: user keyconfig first (customizations), then active (defaults)
+        keyconfigs_to_check = [
+            ('USER', kc_user),
+            ('ACTIVE', kc_active)
+        ]
+        
+        for kc_name, kc in keyconfigs_to_check:
+            keymaps_to_check = []
+            
+            # Find keymaps in this keyconfig
+            preview_km = kc.keymaps.find('SequencerPreview', space_type='SEQUENCE_EDITOR', region_type='WINDOW')
+            if preview_km:
+                keymaps_to_check.append(preview_km)
+            
+            sequencer_km = kc.keymaps.find('Sequencer', space_type='SEQUENCE_EDITOR', region_type='WINDOW')
+            if sequencer_km:
+                keymaps_to_check.append(sequencer_km)
+            
+            window_km = kc.keymaps.find('Window', space_type='EMPTY', region_type='WINDOW')
+            if window_km:
+                keymaps_to_check.append(window_km)
+            
+            # Check for exact matches in this keyconfig
+            for km in keymaps_to_check:
                 for kmi in km.keymap_items:
-                    if kmi.active and kmi.type == event.type:
-                        if (kmi.shift == event.shift and
-                            kmi.ctrl == event.ctrl and
-                            kmi.alt == event.alt):
-                            if kmi.idname in ['transform.translate', 'transform.resize', 'transform.rotate']:
-                                return kmi.idname
+                    if (kmi.active and 
+                        kmi.idname in transform_ops and
+                        kmi.type == event.type and 
+                        kmi.shift == event.shift and
+                        kmi.ctrl == event.ctrl and
+                        kmi.alt == event.alt and
+                        kmi.oskey == event.oskey):
+                        return kmi.idname
         
         return None
     
