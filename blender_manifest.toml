@@ -17,6 +17,9 @@ maintainer = "usrname0"
 # Links
 website = "https://github.com/usrname0/BL_EasyCrop"
 
+# Tags for discoverability
+tags = ["Sequencer", "User Interface"]
+
 # Requirements
 blender_version_min = "4.4.0"
 
@@ -39,9 +42,6 @@ copyright = [
     "2025 usrname0",
     "2007 Original VSE Transform Tools by kgeogeo, DoubleZ, doakey3, NathanLovato",
 ]
-
-# Tags for discoverability
-tags = ["Sequencer", "User Interface"]
 
 # Build configuration
 [build]
