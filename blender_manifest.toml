@@ -17,6 +17,12 @@ maintainer = "usrname0"
 # Links
 website = "https://github.com/usrname0/BL_EasyCrop"
 
+# Requirements
+blender_version_min = "4.4.0"
+
+# License - must be GPL compatible
+license = ["SPDX:GPL-3.0-or-later"]
+
 # Description - must be clear about all functionality
 description = """A simplified cropping interface for the built-in crop in Blender's Video Sequence Editor (VSE).
 
@@ -27,13 +33,6 @@ Features:
 • Respects user's custom-keybinds
 • Works with all strip types that support cropping
 """
-
-# Requirements
-blender_version_min = "4.4.0"
-# blender_version_max = "4.9.999"  # Optional upper bound
-
-# License - must be GPL compatible
-license = ["SPDX:GPL-3.0-or-later"]
 
 # Copyright notices
 copyright = [
