@@ -1,9 +1,14 @@
-# Make operators a proper Python package
+"""
+Operators package for BL Easy Crop
+
+This package contains all the crop-related operators and functionality.
+"""
+
 from . import crop
 
-# Import the operator classes for easier access
+# Import the main classes and functions for external use
 from .crop import (
-    EASYCROP_OT_crop, 
+    EASYCROP_OT_crop,
     EASYCROP_OT_select_and_crop, 
     EASYCROP_OT_activate_tool,
     is_strip_visible_at_frame,

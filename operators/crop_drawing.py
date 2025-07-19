@@ -11,11 +11,11 @@ import math
 from gpu_extras.batch import batch_for_shader
 from mathutils import Vector
 
-# Import from crop_core
 from .crop_core import (
     get_crop_state, get_draw_data, 
     get_strip_geometry_with_flip_support, is_strip_visible_at_frame
 )
+
 
 def draw_line(v1, v2, width, color):
     """Draw a line between two points"""
@@ -30,7 +30,7 @@ def draw_line(v1, v2, width, color):
 
 
 def draw_crop_handles():
-    """Draw function for crop handles"""
+    """Main draw function for crop handles"""
     crop_state = get_crop_state()
     
     # Exit immediately if crop mode isn't active
@@ -55,7 +55,7 @@ def draw_crop_handles():
     if not is_strip_visible_at_frame(strip, current_frame):
         return
     
-    # Get stored data - if draw_data is empty, initialize it
+    # Get stored data
     draw_data = get_draw_data()
     if not draw_data:
         from .crop_core import set_draw_data
@@ -64,22 +64,22 @@ def draw_crop_handles():
     
     active_corner = draw_data.get('active_corner', -1)
     
-    # Get theme colors - use white for handles like native transforms
-    active_color = (1.0, 1.0, 1.0, 1.0)  # White for active
-    handle_color = (1.0, 1.0, 1.0, 0.7)  # Slightly transparent white
-    line_color = (1.0, 1.0, 1.0, 0.5)    # More transparent for lines
+    # Get theme colors - white for handles like native transforms
+    active_color = (1.0, 1.0, 1.0, 1.0)
+    handle_color = (1.0, 1.0, 1.0, 0.7)
+    line_color = (1.0, 1.0, 1.0, 0.5)
     
-    # ALWAYS recalculate geometry to get current crop values
+    # Get current geometry
     corners, (pivot_x, pivot_y), (scale_x, scale_y, flip_x, flip_y) = get_strip_geometry_with_flip_support(strip, scene)
     
-    # Calculate edge midpoints (after rotation)
+    # Calculate edge midpoints
     edge_midpoints = []
     for i in range(4):
         next_i = (i + 1) % 4
         midpoint = (corners[i] + corners[next_i]) / 2
         edge_midpoints.append(midpoint)
     
-    # Get preview transform - we need to use the View2D system
+    # Get preview transform
     region = context.region
     if not region:
         return
@@ -88,18 +88,14 @@ def draw_crop_handles():
     res_x = scene.render.resolution_x
     res_y = scene.render.resolution_y
     
+    # Transform to screen coordinates
     screen_corners = []
     for corner in corners:
-        # Transform from resolution space to view space, then to region space
-        # Resolution space has (0,0) at bottom-left, view space has (0,0) at center
         view_x = corner.x - res_x / 2
         view_y = corner.y - res_y / 2
-        
-        # Use Blender's view2d to transform to screen coordinates
         screen_co = view2d.view_to_region(view_x, view_y, clip=False)
         screen_corners.append(Vector(screen_co))
     
-    # Transform edge midpoints to screen space
     screen_midpoints = []
     for midpoint in edge_midpoints:
         view_x = midpoint.x - res_x / 2
@@ -131,84 +127,67 @@ def _draw_crop_symbol(view2d, pivot_x, pivot_y, res_x, res_y):
     center_x = screen_center[0]
     center_y = screen_center[1]
     
-    # Draw clean white crop symbol with no background
+    # Draw clean white crop symbol
     white_color = (1.0, 1.0, 1.0, 0.8)
-    
-    # Create shader for lines
     line_shader = gpu.shader.from_builtin('UNIFORM_COLOR')
     
-    # Scale for the symbol - keeping it visible but not too large
-    outer_size = 8   # Size of the outer corner brackets
-    inner_size = 5   # Size of the inner viewing rectangle
+    # Symbol dimensions
+    outer_size = 8
+    inner_size = 5
     
-    # Set consistent line width
     gpu.state.line_width_set(1.5)
-    
     line_shader.bind()
     line_shader.uniform_float("color", white_color)
     
-    # Top-left corner bracket (L-shape)
-    # Vertical line (left side)
+    # Corner brackets
+    # Top-left L-shape
     tl_vertical = [
-        (center_x - outer_size, center_y + 1),        # Bottom of vertical
-        (center_x - outer_size, center_y + outer_size) # Top of vertical
+        (center_x - outer_size, center_y + 1),
+        (center_x - outer_size, center_y + outer_size)
     ]
-    
-    # Horizontal line (top side)  
     tl_horizontal = [
-        (center_x - outer_size, center_y + outer_size), # Left end
-        (center_x - 1, center_y + outer_size)           # Right end
+        (center_x - outer_size, center_y + outer_size),
+        (center_x - 1, center_y + outer_size)
     ]
     
-    # Bottom-right corner bracket (L-shape)
-    # Horizontal line (bottom side)
+    # Bottom-right L-shape
     br_horizontal = [
-        (center_x + 1, center_y - outer_size),          # Left end
-        (center_x + outer_size, center_y - outer_size)  # Right end
+        (center_x + 1, center_y - outer_size),
+        (center_x + outer_size, center_y - outer_size)
     ]
-    
-    # Vertical line (right side)
     br_vertical = [
-        (center_x + outer_size, center_y - outer_size), # Bottom
-        (center_x + outer_size, center_y - 1)           # Top
+        (center_x + outer_size, center_y - outer_size),
+        (center_x + outer_size, center_y - 1)
     ]
     
-    # Inner viewing rectangle (thin frame)
+    # Inner viewing rectangle
     inner_rect_lines = [
-        # Bottom line
         [(center_x - inner_size, center_y - inner_size), 
          (center_x + inner_size, center_y - inner_size)],
-        # Right line  
         [(center_x + inner_size, center_y - inner_size),
          (center_x + inner_size, center_y + inner_size)],
-        # Top line
         [(center_x + inner_size, center_y + inner_size),
          (center_x - inner_size, center_y + inner_size)],
-        # Left line
         [(center_x - inner_size, center_y + inner_size),
          (center_x - inner_size, center_y - inner_size)]
     ]
     
-    # Draw all the corner bracket lines
+    # Draw all elements
     for line_verts in [tl_vertical, tl_horizontal, br_horizontal, br_vertical]:
         batch = batch_for_shader(line_shader, 'LINES', {"pos": line_verts})
         batch.draw(line_shader)
     
-    # Draw the inner rectangle
     for line_verts in inner_rect_lines:
         batch = batch_for_shader(line_shader, 'LINES', {"pos": line_verts})
         batch.draw(line_shader)
     
-    # Reset line width
     gpu.state.line_width_set(1.0)
 
 
 def _draw_crop_handles(screen_corners, screen_midpoints, active_corner, strip, active_color, handle_color):
     """Draw the corner and edge handles"""
-    # Draw corner handles
     shader = gpu.shader.from_builtin('UNIFORM_COLOR')
     
-    # Draw all handles as rotated squares
     all_handle_positions = screen_corners + screen_midpoints
     
     # Get rotation angle for handle orientation
@@ -228,8 +207,6 @@ def _draw_crop_handles(screen_corners, screen_midpoints, active_corner, strip, a
         # Create handle vertices - rotated to match strip
         if abs(angle) > 0.01:  # If strip is rotated
             # Calculate handle rotation
-            # For corner handles, rotate 45 degrees less to point at corners
-            # For edge handles, align with the edge
             if i < 4:  # Corner handle
                 handle_angle = angle
             else:  # Edge handle - align with edge direction
@@ -261,13 +238,7 @@ def _draw_crop_handles(screen_corners, screen_midpoints, active_corner, strip, a
                 y = corner_rel.x * sin_a + corner_rel.y * cos_a + pos.y
                 vertices.append((x, y))
             
-            # Convert to proper format
-            vertices = [
-                vertices[0],
-                vertices[1],
-                vertices[3],
-                vertices[2]
-            ]
+            vertices = [vertices[0], vertices[1], vertices[3], vertices[2]]
         else:
             # No rotation - draw regular square handle
             vertices = [

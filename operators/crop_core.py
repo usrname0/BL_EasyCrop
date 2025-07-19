@@ -12,7 +12,7 @@ from mathutils import Vector
 # Global state variables
 _draw_handle = None
 _draw_data = {}
-_crop_active = False  # Track if crop mode is active
+_crop_active = False
 
 
 def is_strip_visible_at_frame(strip, frame):
@@ -70,13 +70,14 @@ def get_strip_geometry_with_flip_support(strip, scene):
     res_y = scene.render.resolution_y
     
     # Get actual strip dimensions
-    if hasattr(strip, 'elements') and strip.elements:
+    strip_width = res_x
+    strip_height = res_y
+    
+    if hasattr(strip, 'elements') and strip.elements and len(strip.elements) > 0:
         elem = strip.elements[0]
-        strip_width = elem.orig_width
-        strip_height = elem.orig_height
-    else:
-        strip_width = res_x
-        strip_height = res_y
+        if hasattr(elem, 'orig_width') and hasattr(elem, 'orig_height'):
+            strip_width = elem.orig_width
+            strip_height = elem.orig_height
     
     # Get scale and base transform
     scale_x = 1.0
@@ -95,19 +96,16 @@ def get_strip_geometry_with_flip_support(strip, scene):
     flip_x = False
     flip_y = False
     
-    if hasattr(strip, 'use_flip_x'):
-        flip_x = strip.use_flip_x
-    elif hasattr(strip, 'flip_x'):
-        flip_x = strip.flip_x
-    elif hasattr(strip, 'mirror_x'):
-        flip_x = strip.mirror_x
+    # Check various possible flip attribute names
+    for attr_name in ['use_flip_x', 'flip_x', 'mirror_x']:
+        if hasattr(strip, attr_name):
+            flip_x = getattr(strip, attr_name)
+            break
     
-    if hasattr(strip, 'use_flip_y'):
-        flip_y = strip.use_flip_y
-    elif hasattr(strip, 'flip_y'):
-        flip_y = strip.flip_y
-    elif hasattr(strip, 'mirror_y'):
-        flip_y = strip.mirror_y
+    for attr_name in ['use_flip_y', 'flip_y', 'mirror_y']:
+        if hasattr(strip, attr_name):
+            flip_y = getattr(strip, attr_name)
+            break
     
     # Get rotation angle
     angle = 0
@@ -150,23 +148,19 @@ def get_strip_geometry_with_flip_support(strip, scene):
     pivot_x = res_x / 2 + offset_x
     pivot_y = res_y / 2 + offset_y
     
-    # When flipped, mirror the box position around the render center
+    # Handle flipped coordinates
     if flip_x:
-        # Mirror horizontally around the center
         new_left = res_x - right
         new_right = res_x - left
         left = new_left
         right = new_right
-        # Also flip the pivot point!
         pivot_x = res_x - pivot_x
     
     if flip_y:
-        # Mirror vertically around the center
         new_bottom = res_y - top
         new_top = res_y - bottom
         bottom = new_bottom
         top = new_top
-        # Also flip the pivot point!
         pivot_y = res_y - pivot_y
     
     # Create corner vectors
@@ -177,7 +171,7 @@ def get_strip_geometry_with_flip_support(strip, scene):
         Vector((right, bottom))  # Bottom-right
     ]
     
-    # Apply rotation if needed (rotation happens after flip)
+    # Apply rotation if needed
     if angle != 0:
         # When flipped, rotation direction is reversed
         if flip_x != flip_y:  # XOR - if only one axis is flipped
@@ -193,6 +187,7 @@ def get_strip_geometry_with_flip_support(strip, scene):
     return corners, (pivot_x, pivot_y), (scale_x, scale_y, flip_x, flip_y)
 
 
+# State management functions
 def get_crop_state():
     """Get the current crop state"""
     global _crop_active, _draw_data, _draw_handle

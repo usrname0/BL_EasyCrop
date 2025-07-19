@@ -4,7 +4,7 @@
 # Blender Extension Manifest
 schema_version = "1.0.0"
 id = "BL_EasyCrop"
-version = "1.0.0"
+version = "1.0.1"
 
 name = "BL Easy Crop"
 tagline = "Easier cropping for Blender's Video Sequence Editor"
@@ -21,19 +21,12 @@ website = "https://github.com/usrname0/BL_EasyCrop"
 description = """A simplified cropping interface for the built-in crop in Blender's Video Sequence Editor (VSE).
 
 Features:
-• Interactive corner and edge handle cropping with real-time preview
-• Strip selection directly in the preview window  
-• Seamless switching between strips while cropping
-• Keyboard shortcut (C) for quick access
+• Crop looks and behaves a bit more like the other transforms (rotate, resize, move, transform)
+• Click and drag handles to crop in the VSE Preview window
+• Select the crop tool via toolbar, menu or shortcut (default "C")
 • Respects user's custom transform keybindings
 • Works with all strip types that support cropping
-
-Usage:
-1. Select the crop tool from the VSE preview toolbar
-2. Click on any strip to select and crop it
-3. Drag corner or edge handles to adjust the crop
-4. Click another strip to switch to it
-5. Click outside handles to exit crop mode"""
+"""
 
 # Requirements
 blender_version_min = "4.4.0"
