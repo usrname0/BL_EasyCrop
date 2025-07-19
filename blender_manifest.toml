@@ -7,7 +7,7 @@ id = "BL_EasyCrop"
 version = "1.0.1"
 
 name = "BL Easy Crop"
-tagline = "Adds handles for easy cropping in the Blender VSE Preview window"
+tagline = "Use handles for easy cropping in the Blender VSE Preview window"
 type = "add-on"
 
 # Author and maintainer info
