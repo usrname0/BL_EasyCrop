@@ -225,6 +225,23 @@ class EASYCROP_OT_crop(bpy.types.Operator):
                     crop_data.max_y = int(self.crop_start[3])
             return self.finish(context, cancelled=True)
         
+        elif event.type == 'C' and event.alt and event.value == 'PRESS':
+            # Clear crop with Alt+C while in crop mode
+            if strip and hasattr(strip, 'crop'):
+                crop_data = strip.crop
+                if crop_data:
+                    crop_data.min_x = 0
+                    crop_data.max_x = 0
+                    crop_data.min_y = 0
+                    crop_data.max_y = 0
+                    # Update the stored start values so ESC won't restore the old crop
+                    self.crop_start = (0, 0, 0, 0)
+                    # Force redraw to show the change immediately
+                    for area in context.screen.areas:
+                        if area.type == 'SEQUENCE_EDITOR':
+                            area.tag_redraw()
+            return {'RUNNING_MODAL'}
+        
         elif self._is_transform_key(context, event):
             # Exit crop mode and activate the transform
             transform_op = self._get_transform_operator(context, event)

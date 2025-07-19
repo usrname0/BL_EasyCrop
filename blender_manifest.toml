@@ -60,4 +60,5 @@ paths_exclude_pattern = [
     "/DEVELOPMENT.md",
     "/*.zip",
     "/.vscode/",
+    "/examples/",
 ]
