@@ -1,8 +1,8 @@
 # BL Easy Crop
 
 BL Easy Crop lets you click and drag handles to crop in Blender's Visual Sequence Editor / preview window.
-With this extension Blender's built-in crop looks and behaves a bit more like the other transforms: rotate, scale, move, transform.
-It can be accesed via the preview window toolbar, menus or keyboard shortcut (default "C").
+With this extension Blender's built-in crop looks and behaves a bit more like the other transforms: rotate, scale, move and transform.
+It can be accessed via the preview window toolbar, menus or keyboard shortcut (default "C").
 
 Credit to the old https://github.com/doakey3/VSE_Transform_Tools for numerous bits of help while trying to get this thing to work.
 
@@ -20,7 +20,7 @@ Quick breakdown of menu options, etc:
 
 ## Manual Installation
 
-Download the [zip](https://github.com/usrname0/BL_EasyCrop/releases/tag/v1.0.0). Install it as a zip file like this:
+Download the latest [zip](https://github.com/usrname0/BL_EasyCrop/releases). Install it as a zip file like this:
 
 ![Manual Install 1](./examples/install1.png)
 
