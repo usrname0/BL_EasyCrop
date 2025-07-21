@@ -20,7 +20,7 @@ Quick breakdown of menu options, etc:
 
 ## Manual Installation
 
-Download the [zip](https://github.com/usrname0/BL_EasyCrop/releases/tag/v1.0.0). Install it as a zip file like this:
+Download the latest [zip](https://github.com/usrname0/BL_EasyCrop/releases). Install it as a zip file like this:
 
 ![Manual Install 1](./examples/install1.png)
 
