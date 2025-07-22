@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:blender.stackexchange.com)",
+      "WebFetch(domain:vse-docs.readthedocs.io)",
+      "WebFetch(domain:devtalk.blender.org)",
+      "WebFetch(domain:projects.blender.org)",
+      "WebFetch(domain:docs.blender.org)"
+    ],
+    "deny": []
+  }
+}
