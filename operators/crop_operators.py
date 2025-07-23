@@ -19,7 +19,7 @@ from .crop_drawing import draw_crop_handles
 
 class EASYCROP_OT_crop(bpy.types.Operator):
     """Crop strips in the preview window"""
-    bl_idname = "easycrop.crop"
+    bl_idname = "sequencer.crop"
     bl_label = "Crop"
     bl_description = "Crop a strip in the Image Preview"
     bl_options = {'REGISTER', 'UNDO'}
@@ -191,7 +191,7 @@ class EASYCROP_OT_crop(bpy.types.Operator):
                     clicked_strip.select = True
                     context.scene.sequence_editor.active_strip = clicked_strip
                     if hasattr(clicked_strip, 'crop'):
-                        bpy.ops.easycrop.crop('INVOKE_DEFAULT')
+                        bpy.ops.sequencer.crop('INVOKE_DEFAULT')
                     return {'FINISHED'}
                 else:
                     # Exit crop mode
@@ -650,7 +650,7 @@ class EASYCROP_OT_crop(bpy.types.Operator):
 
 class EASYCROP_OT_activate_tool(bpy.types.Operator):
     """Activate crop tool - direct activation like built-in transforms"""
-    bl_idname = "easycrop.activate_tool"
+    bl_idname = "sequencer.activate_tool"
     bl_label = "Activate Crop Tool"
     bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
     
@@ -663,12 +663,12 @@ class EASYCROP_OT_activate_tool(bpy.types.Operator):
     
     def invoke(self, context, event):
         # Immediately activate the crop operator
-        return bpy.ops.easycrop.crop('INVOKE_DEFAULT')
+        return bpy.ops.sequencer.crop('INVOKE_DEFAULT')
 
 
 class EASYCROP_OT_select_and_crop(bpy.types.Operator):
     """Select strip and activate crop mode"""
-    bl_idname = "easycrop.select_and_crop"
+    bl_idname = "sequencer.select_and_crop"
     bl_label = "Select and Crop"
     bl_description = "Select a strip in the preview and activate crop mode"
     bl_options = {'REGISTER', 'UNDO', 'INTERNAL'}
@@ -703,7 +703,7 @@ class EASYCROP_OT_select_and_crop(bpy.types.Operator):
             context.area.tag_redraw()
             
             # Activate crop mode
-            return bpy.ops.easycrop.crop('INVOKE_DEFAULT')
+            return bpy.ops.sequencer.crop('INVOKE_DEFAULT')
         else:
             # Check if we have an active strip ready
             seq_editor = context.scene.sequence_editor
@@ -716,7 +716,7 @@ class EASYCROP_OT_select_and_crop(bpy.types.Operator):
                 
                 crop_state = get_crop_state()
                 if not crop_state['active']:
-                    return bpy.ops.easycrop.crop('INVOKE_DEFAULT')
+                    return bpy.ops.sequencer.crop('INVOKE_DEFAULT')
         
         return {'FINISHED'}
     

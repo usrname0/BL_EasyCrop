@@ -12,8 +12,8 @@ bl_info = {
     "name": "BL Easy Crop",
     "description": "Easy cropping tool for Blender's Video Sequence Editor",
     "author": "Adapted from VSE Transform Tools",
-    "version": (1, 1, 0),
-    "blender": (4, 0, 0),
+    "version": (1, 0, 2),
+    "blender": (4, 4, 0),
     "location": "Sequencer > Preview > Toolbar",
     "warning": "",
     "doc_url": "",
@@ -22,7 +22,7 @@ bl_info = {
 }
 
 import bpy
-from bpy.types import Operator, Panel, Menu, WorkSpaceTool
+from bpy.types import Operator, WorkSpaceTool
 
 # Import operators with error handling
 try:
@@ -43,7 +43,7 @@ except ImportError as e:
 
 class EASYCROP_OT_clear_crop(bpy.types.Operator):
     """Clear crop from selected strips"""
-    bl_idname = "easycrop.clear_crop"
+    bl_idname = "sequencer.clear_crop"
     bl_label = "Clear Crop"
     bl_description = "Clear crop from all selected strips"
     bl_options = {'REGISTER', 'UNDO'}
@@ -83,7 +83,7 @@ class EASYCROP_TOOL_crop(WorkSpaceTool):
     bl_space_type = 'SEQUENCE_EDITOR'
     bl_context_mode = 'PREVIEW'
     
-    bl_idname = "easycrop.crop_tool"
+    bl_idname = "sequencer.crop_tool"
     bl_label = "Crop"
     bl_description = "Crop strips in the preview"
     bl_icon = "ops.sequencer.blade"
@@ -91,7 +91,7 @@ class EASYCROP_TOOL_crop(WorkSpaceTool):
     
     # Standard tool behavior - click to use crop
     bl_keymap = (
-        ("easycrop.select_and_crop", {"type": 'LEFTMOUSE', "value": 'PRESS'}, None),
+        ("sequencer.select_and_crop", {"type": 'LEFTMOUSE', "value": 'PRESS'}, None),
     )
     
     @staticmethod  
@@ -127,20 +127,20 @@ def menu_func_strip_transform(self, context):
     """Add Easy Crop to Strip > Transform menu"""
     if context.space_data.view_type in {'PREVIEW', 'SEQUENCER_PREVIEW'}:
         self.layout.operator_context = 'INVOKE_REGION_PREVIEW'
-        self.layout.operator("easycrop.crop", text="Crop")
+        self.layout.operator("sequencer.crop", text="Crop")
 
 
 def menu_func_image_transform(self, context):
     """Add Easy Crop to Image > Transform menu"""
     if context.space_data.view_type in {'PREVIEW', 'SEQUENCER_PREVIEW'}:
         self.layout.operator_context = 'INVOKE_REGION_PREVIEW'
-        self.layout.operator("easycrop.crop", text="Crop")
+        self.layout.operator("sequencer.crop", text="Crop")
 
 
 def menu_func_image_clear(self, context):
     """Add Clear Crop to Image > Clear menu"""
     if context.space_data.view_type in {'PREVIEW', 'SEQUENCER_PREVIEW'}:
-        self.layout.operator("easycrop.clear_crop", text="Crop")
+        self.layout.operator("sequencer.clear_crop", text="Crop")
 
 
 # Registration
@@ -168,28 +168,20 @@ def register():
             except Exception as e:
                 print(f"BL Easy Crop: Failed to register {cls.__name__}: {e}")
     
-    # Register keymaps
+    # Register keymaps - only in Preview area
     wm = bpy.context.window_manager
     kc = wm.keyconfigs.addon
     if kc:
-        # Preview region keymaps
+        # Preview region keymaps only
         km = kc.keymaps.new(name="SequencerPreview", space_type="SEQUENCE_EDITOR", region_type="WINDOW")
         
-        # Crop operator - C key
-        kmi = km.keymap_items.new("easycrop.crop", 'C', 'PRESS')
+        # Crop operator - C key  
+        kmi = km.keymap_items.new("sequencer.crop", 'C', 'PRESS')
         addon_keymaps.append((km, kmi))
         
         # Clear crop operator - Alt+C key
-        kmi_clear = km.keymap_items.new("easycrop.clear_crop", 'C', 'PRESS', alt=True)
+        kmi_clear = km.keymap_items.new("sequencer.clear_crop", 'C', 'PRESS', alt=True)
         addon_keymaps.append((km, kmi_clear))
-        
-        # General sequencer context
-        km2 = kc.keymaps.new(name="Sequencer", space_type="SEQUENCE_EDITOR")
-        kmi2 = km2.keymap_items.new("easycrop.crop", 'C', 'PRESS')
-        addon_keymaps.append((km2, kmi2))
-        
-        kmi2_clear = km2.keymap_items.new("easycrop.clear_crop", 'C', 'PRESS', alt=True)
-        addon_keymaps.append((km2, kmi2_clear))
     
     # Register the tool
     try:
