@@ -22,6 +22,7 @@ bl_info = {
 }
 
 import bpy
+import os
 from bpy.types import Operator, WorkSpaceTool
 
 # Import operators with error handling
@@ -86,7 +87,7 @@ class EASYCROP_TOOL_crop(WorkSpaceTool):
     bl_idname = "sequencer.crop_tool"
     bl_label = "Crop"
     bl_description = "Crop strips in the preview"
-    bl_icon = "ops.sequencer.blade"
+    bl_icon = os.path.join(os.path.dirname(__file__), "crop")
     bl_widget = None
     
     # Standard tool behavior - click to use crop
@@ -96,7 +97,8 @@ class EASYCROP_TOOL_crop(WorkSpaceTool):
     
     @staticmethod  
     def draw_settings(context, layout, tool):
-        # Simple status display
+        # Simple statu
+        # s display
         seq_editor = context.scene.sequence_editor
         if not seq_editor:
             layout.label(text="No sequence editor")
