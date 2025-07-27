@@ -9,12 +9,19 @@ It serves as the main entry point for the crop system.
 from . import crop_core
 from . import crop_drawing  
 from . import crop_operators
+from . import tool_monitor
 
 # Import the main classes and functions for external use
 from .crop_operators import (
     EASYCROP_OT_crop,
     EASYCROP_OT_select_and_crop, 
     EASYCROP_OT_activate_tool
+)
+
+from .tool_monitor import (
+    EASYCROP_OT_tool_monitor,
+    start_tool_monitor,
+    stop_tool_monitor
 )
 
 from .crop_core import (
@@ -30,15 +37,19 @@ __all__ = [
     'crop_core',
     'crop_drawing', 
     'crop_operators',
+    'tool_monitor',
     
     # Main operator classes
     'EASYCROP_OT_crop',
     'EASYCROP_OT_select_and_crop',
     'EASYCROP_OT_activate_tool',
+    'EASYCROP_OT_tool_monitor',
     
     # Core functions
     'is_strip_visible_at_frame',
     'get_crop_state',
     'set_crop_active', 
-    'clear_crop_state'
+    'clear_crop_state',
+    'start_tool_monitor',
+    'stop_tool_monitor'
 ]

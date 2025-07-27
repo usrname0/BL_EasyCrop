@@ -62,8 +62,12 @@ class EASYCROP_OT_crop(bpy.types.Operator):
                               hasattr(strip, 'crop') and 
                               is_strip_visible_at_frame(strip, current_frame))
         
-        # If no suitable active strip, try to find one under the mouse
-        if not has_suitable_active:
+        # If we have a suitable active strip, use it directly (no mouse click needed)
+        if has_suitable_active:
+            # This is the key change - we proceed directly without requiring a click
+            pass
+        else:
+            # If no suitable active strip, try to find one under the mouse
             mouse_pos = Vector((event.mouse_region_x, event.mouse_region_y))
             strips = self._get_visible_strips(context)
             clicked_strip = None
@@ -662,7 +666,7 @@ class EASYCROP_OT_activate_tool(bpy.types.Operator):
                 context.space_data.view_type in {'PREVIEW', 'SEQUENCER_PREVIEW'})
     
     def invoke(self, context, event):
-        # Immediately activate the crop operator
+        # Immediately activate the crop operator - let it handle strip selection
         return bpy.ops.sequencer.crop('INVOKE_DEFAULT')
 
 
