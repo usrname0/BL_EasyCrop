@@ -285,16 +285,12 @@ def register():
         kmi_clear = km.keymap_items.new("sequencer.clear_crop", 'C', 'PRESS', alt=True)
         addon_keymaps.append((km, kmi_clear))
     
-    # Register the tools
+    # Register the tools - only the gizmo handles tool
     try:
-        bpy.utils.register_tool(EASYCROP_TOOL_crop, after={"builtin.transform"}, separator=False)
-        bpy.utils.register_tool(EASYCROP_TOOL_crop_gizmo, after={"sequencer.crop_tool"}, separator=False)
-        bpy.utils.register_tool(EASYCROP_TOOL_crop_handles, after={"sequencer.crop_gizmo_tool"}, separator=False)
+        bpy.utils.register_tool(EASYCROP_TOOL_crop_handles, after={"builtin.transform"}, separator=False)
     except Exception as e:
         print(f"BL Easy Crop: Tool placement failed: {e}")
         try:
-            bpy.utils.register_tool(EASYCROP_TOOL_crop)
-            bpy.utils.register_tool(EASYCROP_TOOL_crop_gizmo)
             bpy.utils.register_tool(EASYCROP_TOOL_crop_handles)
         except Exception as e2:
             print(f"BL Easy Crop: Tool registration failed: {e2}")
@@ -351,8 +347,6 @@ def unregister():
     # Unregister the tools
     try:
         bpy.utils.unregister_tool(EASYCROP_TOOL_crop_handles)
-        bpy.utils.unregister_tool(EASYCROP_TOOL_crop_gizmo)
-        bpy.utils.unregister_tool(EASYCROP_TOOL_crop)
     except:
         pass
     
