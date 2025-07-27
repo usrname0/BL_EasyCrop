@@ -64,9 +64,14 @@ def draw_crop_handles():
     
     active_corner = draw_data.get('active_corner', -1)
     
-    # Get theme colors - white for handles like native transforms
-    active_color = (1.0, 1.0, 1.0, 1.0)
-    handle_color = (1.0, 1.0, 1.0, 0.7)
+    # Get mouse position for hover detection (stored by modal operator)
+    mouse_x = draw_data.get('mouse_x', 0)  
+    mouse_y = draw_data.get('mouse_y', 0)
+    
+    # Get theme colors - match gizmo version
+    active_color = (1.0, 1.0, 1.0, 1.0)  # White for active/dragging
+    hover_color = (1.0, 0.5, 0.0, 1.0)   # Orange for hover (like gizmo)
+    handle_color = (1.0, 1.0, 1.0, 0.7)  # White for normal
     line_color = (1.0, 1.0, 1.0, 0.5)
     
     # Get current geometry
@@ -112,8 +117,11 @@ def draw_crop_handles():
     # Draw crop symbol at center
     _draw_crop_symbol(view2d, pivot_x, pivot_y, res_x, res_y)
     
+    # Detect hover for feedback
+    hover_corner = _get_hovered_corner(screen_corners, screen_midpoints, mouse_x, mouse_y)
+    
     # Draw corner and edge handles
-    _draw_crop_handles(screen_corners, screen_midpoints, active_corner, strip, active_color, handle_color)
+    _draw_crop_handles(screen_corners, screen_midpoints, active_corner, hover_corner, strip, active_color, hover_color, handle_color)
 
 
 def _draw_crop_symbol(view2d, pivot_x, pivot_y, res_x, res_y):
@@ -184,7 +192,19 @@ def _draw_crop_symbol(view2d, pivot_x, pivot_y, res_x, res_y):
     gpu.state.line_width_set(1.0)
 
 
-def _draw_crop_handles(screen_corners, screen_midpoints, active_corner, strip, active_color, handle_color):
+def _get_hovered_corner(screen_corners, screen_midpoints, mouse_x, mouse_y):
+    """Detect which handle is being hovered over"""
+    all_handle_positions = screen_corners + screen_midpoints
+    threshold = 15  # Same threshold as modal operator
+    
+    for i, pos in enumerate(all_handle_positions):
+        distance = ((pos.x - mouse_x)**2 + (pos.y - mouse_y)**2)**0.5
+        if distance <= threshold:
+            return i
+    return -1
+
+
+def _draw_crop_handles(screen_corners, screen_midpoints, active_corner, hover_corner, strip, active_color, hover_color, handle_color):
     """Draw the corner and edge handles"""
     shader = gpu.shader.from_builtin('UNIFORM_COLOR')
     
@@ -200,9 +220,19 @@ def _draw_crop_handles(screen_corners, screen_midpoints, active_corner, strip, a
         angle = strip.transform.rotation
     
     for i, pos in enumerate(all_handle_positions):
-        # Determine size and color
-        size = 8 if i == active_corner else 6
-        color = active_color if i == active_corner else handle_color
+        # Determine size and color based on state
+        if i == active_corner:
+            # Active/dragging - white and larger
+            size = 8
+            color = active_color
+        elif i == hover_corner:
+            # Hovered - orange like gizmo version
+            size = 7
+            color = hover_color
+        else:
+            # Normal - white but dimmer
+            size = 6
+            color = handle_color
         
         # Create handle vertices - rotated to match strip
         if abs(angle) > 0.01:  # If strip is rotated

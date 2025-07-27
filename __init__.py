@@ -111,9 +111,9 @@ class EASYCROP_TOOL_crop(WorkSpaceTool):
     bl_context_mode = 'PREVIEW'
     
     bl_idname = "sequencer.crop_tool"
-    bl_label = "Crop"
-    bl_description = "Crop strips in the preview"
-    bl_icon = os.path.join(os.path.dirname(__file__), "crop")
+    bl_label = "Crop (Modal)"
+    bl_description = "Crop strips using modal operator"
+    bl_icon = "ops.sequencer.blade"  # Use different icon for modal version
     bl_widget = None
     
     # Auto-activate behavior - immediately start crop mode for active strip
@@ -141,12 +141,12 @@ class EASYCROP_TOOL_crop_handles(WorkSpaceTool):
     bl_context_mode = 'PREVIEW'
     
     bl_idname = "sequencer.crop_handles_tool"
-    bl_label = "Crop Handles"
+    bl_label = "Crop"
     bl_description = "Crop strips using individual handle gizmos"
-    bl_icon = "ops.sequencer.slip"  # Use slip icon for handles
+    bl_icon = os.path.join(os.path.dirname(__file__), "crop")  # Use custom crop icon
     bl_widget = "EASYCROP_GGT_crop_handles"
     
-    # No keymap needed - gizmos handle interaction  
+    # Keymap is handled by gizmos - no tool-level keymap needed
     bl_keymap = None
     
     @staticmethod  
@@ -211,15 +211,15 @@ EASYCROP_TOOL_crop.draw_settings = staticmethod(draw_crop_tool_settings)
 def menu_func_strip_transform(self, context):
     """Add Easy Crop to Strip > Transform menu"""
     if context.space_data.view_type in {'PREVIEW', 'SEQUENCER_PREVIEW'}:
-        self.layout.operator_context = 'INVOKE_REGION_PREVIEW'
-        self.layout.operator("sequencer.crop", text="Crop")
+        # Use gizmo tool with standard menu formatting
+        self.layout.operator("wm.tool_set_by_id", text="Crop").name = "sequencer.crop_handles_tool"
 
 
 def menu_func_image_transform(self, context):
     """Add Easy Crop to Image > Transform menu"""
     if context.space_data.view_type in {'PREVIEW', 'SEQUENCER_PREVIEW'}:
-        self.layout.operator_context = 'INVOKE_REGION_PREVIEW'
-        self.layout.operator("sequencer.crop", text="Crop")
+        # Use gizmo tool with standard menu formatting
+        self.layout.operator("wm.tool_set_by_id", text="Crop").name = "sequencer.crop_handles_tool"
 
 
 def menu_func_image_clear(self, context):
@@ -277,7 +277,7 @@ def register():
         # Preview region keymaps only
         km = kc.keymaps.new(name="SequencerPreview", space_type="SEQUENCE_EDITOR", region_type="WINDOW")
         
-        # Crop operator - C key  
+        # Crop operator - C key (modal for quick access, returns to previous tool)
         kmi = km.keymap_items.new("sequencer.crop", 'C', 'PRESS')
         addon_keymaps.append((km, kmi))
         

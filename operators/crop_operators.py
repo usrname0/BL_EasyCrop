@@ -147,6 +147,12 @@ class EASYCROP_OT_crop(bpy.types.Operator):
     def modal(self, context, event):
         draw_data = get_draw_data()
         
+        # Store current mouse position for hover detection
+        if hasattr(event, 'mouse_region_x') and hasattr(event, 'mouse_region_y'):
+            draw_data['mouse_x'] = event.mouse_region_x
+            draw_data['mouse_y'] = event.mouse_region_y
+            set_draw_data(draw_data)
+        
         # Handle timer events
         if event.type == 'TIMER':
             for area in context.screen.areas:

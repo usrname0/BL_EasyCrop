@@ -36,6 +36,7 @@ class EASYCROP_GT_crop_handle(Gizmo):
         # IMPORTANT: Make sure gizmo can be selected and interacted with
         self.use_select_background = False  # Don't select through background
         
+        
         # Set gizmo to be interactive
         self.select_id = 0  # Will be overridden in group setup
         
@@ -63,6 +64,7 @@ class EASYCROP_GT_crop_handle(Gizmo):
                 # Fallback
                 color = (1.0, 1.0, 1.0, 0.7)
                 self._draw_handle_square(color, context)
+    
     
     def _draw_crop_symbol(self, color):
         """Draw the crop symbol (for center handle)"""
@@ -301,6 +303,7 @@ class EASYCROP_GT_crop_handle(Gizmo):
                 for area in context.screen.areas:
                     if area.type == 'SEQUENCE_EDITOR':
                         area.tag_redraw()
+                
                         
                 # DON'T move the gizmo - it should stay at the crop boundary
                 # This is the key difference from strip transform
@@ -624,6 +627,7 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
             gizmo.use_event_handle_all = True
             gizmo.use_draw_modal = True  
             gizmo.use_grab_cursor = True
+            
             print(f"✓ Created corner handle {i}")
         
         # Create edge handles (4)  
@@ -637,6 +641,7 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
             gizmo.use_event_handle_all = True
             gizmo.use_draw_modal = True
             gizmo.use_grab_cursor = True
+            
             print(f"✓ Created edge handle {i}")
         
         # Create center handle (1)
