@@ -588,7 +588,6 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
                     # Try to get the active tool for sequencer preview
                     for tool in workspace.tools:
                         if hasattr(tool, 'idname') and tool.idname == "sequencer.crop_handles_tool":
-                            print(f"✅ Crop handles tool detected: {tool.idname}")
                             return True
             
             # Method 2: Check via context.tool_settings if available
@@ -605,7 +604,6 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
                 workspace = bpy.context.workspace
                 for tool in workspace.tools:
                     if hasattr(tool, 'idname') and tool.idname == "sequencer.crop_handles_tool":
-                        print(f"✅ Crop handles tool detected: {tool.idname}")
                         return True
         except:
             pass

@@ -220,18 +220,17 @@ def _draw_crop_handles(screen_corners, screen_midpoints, active_corner, hover_co
         angle = strip.transform.rotation
     
     for i, pos in enumerate(all_handle_positions):
-        # Determine size and color based on state
+        # Determine color based on state - consistent size like gizmo version
+        size = 6  # Consistent size for all states
+        
         if i == active_corner:
-            # Active/dragging - white and larger
-            size = 8
+            # Active/dragging - white
             color = active_color
         elif i == hover_corner:
             # Hovered - orange like gizmo version
-            size = 7
             color = hover_color
         else:
             # Normal - white but dimmer
-            size = 6
             color = handle_color
         
         # Create handle vertices - rotated to match strip
