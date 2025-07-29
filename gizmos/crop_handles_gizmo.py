@@ -7,6 +7,8 @@ Based on the modal operator but using gizmos for better integration.
 
 import bpy
 import math
+import gpu
+from gpu_extras.batch import batch_for_shader
 from bpy.types import Gizmo, GizmoGroup
 from mathutils import Vector, Matrix
 
@@ -19,6 +21,7 @@ from ..operators.crop_core import (
 class EASYCROP_GT_crop_handle(Gizmo):
     """Individual crop handle gizmo"""
     bl_idname = "EASYCROP_GT_crop_handle"
+    bl_target_properties = ()
     
     def setup(self):
         """Setup the handle gizmo"""
@@ -26,34 +29,94 @@ class EASYCROP_GT_crop_handle(Gizmo):
         self.handle_type = "corner"  # or "edge" or "center"
         self.handle_index = 0
         
-        # CRITICAL: Set gizmo as interactive and draggable
+        # CRITICAL: Essential properties for always-visible gizmos
         self.use_draw_modal = True
+        self.use_draw_select = True  
         self.use_event_handle_all = True
         
-        # Set the interaction style for dragging
+        # Prevent hiding
+        self.use_select_background = False
         self.use_grab_cursor = True
         
-        # IMPORTANT: Make sure gizmo can be selected and interacted with
-        self.use_select_background = False  # Don't select through background
+        # CRITICAL: Set visibility properties explicitly
+        self.hide = False  # Explicitly show the gizmo
+        self.alpha = 0.8  # Ensure visible transparency
+        self.alpha_highlight = 1.0
         
+        # Set colors for visibility
+        self.color = (1.0, 1.0, 1.0)
+        self.color_highlight = (1.0, 0.5, 0.0)
+        
+        # Set gizmo scale to match modal operator
+        self.scale_basis = 6.0  # Match modal operator handle size
         
         # Set gizmo to be interactive
         self.select_id = 0  # Will be overridden in group setup
         
-        print(f"🔧 Setup gizmo {self.handle_type}[{self.handle_index}] with select_id {self.select_id}")
+        # Note: handle_type and handle_index are set after creation in group setup
+    
+    def draw_prepare(self, context):
+        """Prepare for drawing - ensure gizmo is visible"""
+        self.hide = False  # Force visibility
+        self.alpha = 0.8 if not self.is_highlight else 1.0
     
     def draw(self, context):
-        """Draw the handle gizmo"""
+        """Draw the handle gizmo using built-in methods"""
+        print(f"🎨 DRAW called for {self.handle_type}[{self.handle_index}] highlight={self.is_highlight}")
+        
+        # Ensure gizmo is not hidden
+        self.hide = False
+        
+        # Set colors based on state
+        if self.is_highlight:
+            self.color = self.color_highlight
+            self.alpha = self.alpha_highlight
+        else:
+            self.color = (1.0, 1.0, 1.0)
+            self.alpha = 0.8
+        
+        # Use custom GPU drawing with proper highlight colors
+        try:
+            # Use the color set by the highlight system
+            if self.is_highlight:
+                color = (*self.color_highlight, self.alpha_highlight)
+            else:
+                color = (*self.color, self.alpha)
+            
+            if self.handle_type == "center":
+                # Center handle - use custom crop symbol drawing
+                self._draw_crop_symbol(color)
+            else:
+                # Corner and edge handles - use custom square drawing with highlight color
+                self._draw_handle_square(color, context)
+                    
+            print(f"✅ Successfully drew {self.handle_type}[{self.handle_index}] handle with custom drawing")
+                    
+        except Exception as e:
+            print(f"❌ Custom drawing failed for {self.handle_type}[{self.handle_index}]: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def draw_select(self, context, select_id):
+        """Draw during selection/modal operations - keeps handles visible"""
+        print(f"🎨 DRAW_SELECT called for {self.handle_type}[{self.handle_index}]")
+        self._draw_handle_common(context, during_modal=True)
+    
+    def _draw_handle_common(self, context, during_modal=False):
+        """Common drawing logic for both normal and modal states"""
         if self.handle_type == "center":
             # Center symbol (crop icon) - always white
             color = (1.0, 1.0, 1.0, 0.8)
+            if during_modal:
+                # Make center slightly more transparent during modal
+                color = (1.0, 1.0, 1.0, 0.6)
             self._draw_crop_symbol(color)
         else:
             # Handle using ONLY square drawing for proper appearance
             try:
                 # Draw square handles (no circles)
-                if self.is_highlight:
-                    square_color = (1.0, 0.5, 0.0, 1.0)  # Orange when highlighted
+                if self.is_highlight or during_modal:
+                    square_color = (1.0, 0.5, 0.0, 1.0)  # Orange when highlighted or during modal
                 else:
                     square_color = (1.0, 1.0, 1.0, 0.7)  # White normally
                 
@@ -68,20 +131,18 @@ class EASYCROP_GT_crop_handle(Gizmo):
     
     def _draw_crop_symbol(self, color):
         """Draw the crop symbol (for center handle)"""
-        import gpu
-        from gpu_extras.batch import batch_for_shader
         
         try:
             center_pos = self.matrix_basis.translation
             center_x = center_pos.x
             center_y = center_pos.y
             
-            # Symbol dimensions (same as modal operator)
+            # Symbol dimensions - match modal operator exactly
             outer_size = 8
             inner_size = 5
             
             line_shader = gpu.shader.from_builtin('UNIFORM_COLOR')
-            gpu.state.line_width_set(1.5)
+            gpu.state.line_width_set(1.5)  # Match modal operator exactly
             line_shader.bind()
             line_shader.uniform_float("color", color)
             
@@ -114,29 +175,35 @@ class EASYCROP_GT_crop_handle(Gizmo):
             print(f"Crop symbol draw error: {e}")
     
     def _draw_handle_square(self, color, context):
-        """Draw a handle square (for corner and edge handles) with rotation"""
-        import gpu
-        from gpu_extras.batch import batch_for_shader
+        """Draw a handle square (for corner and edge handles) with rotation - match modal operator exactly"""
         
         try:
             center_pos = self.matrix_basis.translation
             center_x = center_pos.x
             center_y = center_pos.y
             
-            # Handle size (no highlighting)
+            # Handle size - match modal operator exactly
             size = 6
             
-            # Get strip rotation for handle orientation
-            angle = self._get_strip_rotation(context)
+            # Get rotation directly from strip like modal operator does
+            strip = context.scene.sequence_editor.active_strip
+            rotation_angle = 0
+            if strip:
+                if hasattr(strip, 'rotation_start'):
+                    rotation_angle = math.radians(strip.rotation_start)
+                elif hasattr(strip, 'rotation'):
+                    rotation_angle = strip.rotation
+                elif hasattr(strip, 'transform') and hasattr(strip.transform, 'rotation'):
+                    rotation_angle = strip.transform.rotation
             
-            # Create rotated square vertices
-            if abs(angle) > 0.01:  # If strip is rotated
-                cos_a = math.cos(angle)
-                sin_a = math.sin(angle)
+            # Apply rotation to square vertices like modal operator
+            if abs(rotation_angle) > 0.01:  # If there's meaningful rotation
+                cos_a = math.cos(rotation_angle)
+                sin_a = math.sin(rotation_angle)
                 
                 # Define square corners relative to center
                 corners_rel = [
-                    (-size, -size), (size, -size), (-size, size), (size, size)
+                    (-size, -size), (size, -size), (size, size), (-size, size)
                 ]
                 
                 # Rotate and translate
@@ -145,6 +212,9 @@ class EASYCROP_GT_crop_handle(Gizmo):
                     x = x_rel * cos_a - y_rel * sin_a + center_x
                     y = x_rel * sin_a + y_rel * cos_a + center_y
                     vertices.append((x, y))
+                
+                # Reorder vertices like modal operator for proper triangle winding
+                vertices = [vertices[0], vertices[1], vertices[3], vertices[2]]
             else:
                 # No rotation - regular square
                 vertices = [
@@ -165,42 +235,7 @@ class EASYCROP_GT_crop_handle(Gizmo):
         except Exception as e:
             print(f"Handle square draw error: {e}")
     
-    def _get_strip_rotation(self, context):
-        """Get the rotation angle of the active strip for visual handle rotation"""
-        strip = context.scene.sequence_editor.active_strip
-        if not strip:
-            return 0
-        
-        # Get rotation angle
-        angle = 0
-        if hasattr(strip, 'rotation_start'):
-            angle = math.radians(strip.rotation_start)
-        elif hasattr(strip, 'rotation'):
-            angle = strip.rotation
-        elif hasattr(strip, 'transform') and hasattr(strip.transform, 'rotation'):
-            angle = strip.transform.rotation
-        
-        # Check for flip states to adjust handle rotation direction
-        flip_x = False
-        flip_y = False
-        
-        for attr_name in ['use_flip_x', 'flip_x', 'mirror_x']:
-            if hasattr(strip, attr_name):
-                flip_x = getattr(strip, attr_name)
-                break
-        
-        for attr_name in ['use_flip_y', 'flip_y', 'mirror_y']:
-            if hasattr(strip, attr_name):
-                flip_y = getattr(strip, attr_name)
-                break
-        
-        # For handle visual rotation, we want them to rotate in the same direction
-        # as the strip appears to rotate. When single-axis flipped, the visual
-        # rotation direction should be inverted for the handles to match.
-        if flip_x != flip_y:  # Single axis flip
-            angle = -angle
-        
-        return angle
+    # Removed _get_strip_rotation method - now getting rotation directly like modal operator
     
     def test_select(self, context, event):
         """Test if point is over this gizmo"""
@@ -226,6 +261,7 @@ class EASYCROP_GT_crop_handle(Gizmo):
         """Start handle dragging"""
         print(f"🟢 GIZMO INVOKE CALLED: {self.handle_type}[{self.handle_index}] at screen pos ({event.mouse_region_x}, {event.mouse_region_y})")
         print(f"   Event type: {event.type}, value: {event.value}")
+        print(f"   🎨 use_draw_select = {getattr(self, 'use_draw_select', 'NOT_SET')}")
         
         if self.handle_type == "center":
             # Center handle starts modal crop mode (like current single gizmo)
@@ -255,6 +291,14 @@ class EASYCROP_GT_crop_handle(Gizmo):
                     print("🚫 Disabled transform gizmos during crop drag")
             except Exception as e:
                 print(f"⚠️ Could not disable transform gizmos: {e}")
+            
+            # RE-ENABLE modal drawing handler to keep handles visible during drag
+            try:
+                self._modal_draw_handler = bpy.types.SpaceSequenceEditor.draw_handler_add(
+                    self._draw_handles_during_modal, (), 'PREVIEW', 'POST_PIXEL')
+                print("🎨 Added modal drawing handler for drag visibility")
+            except Exception as e:
+                print(f"⚠️ Could not add modal drawing handler: {e}")
             
             # Store initial crop values for this drag operation (like modal operator)
             strip = context.scene.sequence_editor.active_strip
@@ -304,6 +348,7 @@ class EASYCROP_GT_crop_handle(Gizmo):
                     if area.type == 'SEQUENCE_EDITOR':
                         area.tag_redraw()
                 
+                # The drawing handler should be handling the handle visibility
                         
                 # DON'T move the gizmo - it should stay at the crop boundary
                 # This is the key difference from strip transform
@@ -318,6 +363,196 @@ class EASYCROP_GT_crop_handle(Gizmo):
         
         return {'RUNNING_MODAL'}
     
+    def _draw_handles_during_modal(self):
+        """Custom drawing function to keep handles visible during modal"""
+        try:
+            # Get current context - this is tricky in a drawing handler
+            import bpy
+            context = bpy.context
+            
+            # Draw all handles manually using GPU drawing
+            scene = context.scene
+            if not scene.sequence_editor or not scene.sequence_editor.active_strip:
+                return
+                
+            active_strip = scene.sequence_editor.active_strip
+            if not hasattr(active_strip, 'crop'):
+                return
+            
+            # Use direct GPU drawing to ensure handles are visible
+            self._draw_handles_with_gpu(context, active_strip, scene)
+                
+        except Exception as e:
+            print(f"⚠️ Modal drawing error: {e}")
+    
+    def _draw_handles_with_gpu(self, context, strip, scene):
+        """Draw handles directly with GPU during modal operations"""
+        try:
+            from ..operators.crop_core import get_strip_geometry_with_flip_support
+            
+            # Get strip geometry
+            corners, (pivot_x, pivot_y), (scale_x, scale_y, flip_x, flip_y) = get_strip_geometry_with_flip_support(strip, scene)
+            
+            # Calculate edge midpoints
+            edge_midpoints = []
+            for i in range(4):
+                next_i = (i + 1) % 4
+                midpoint = (corners[i] + corners[next_i]) / 2
+                edge_midpoints.append(midpoint)
+            
+            # Convert to screen coordinates
+            region = context.region
+            if not region or not region.view2d:
+                return
+                
+            view2d = region.view2d
+            res_x = scene.render.resolution_x
+            res_y = scene.render.resolution_y
+            
+            # Get shader for drawing
+            shader = gpu.shader.from_builtin('UNIFORM_COLOR')
+            gpu.state.blend_set('ALPHA')
+            
+            # Get which handle is being dragged (stored in handle_type and handle_index)
+            active_handle_type = getattr(self, 'handle_type', None)
+            active_handle_index = getattr(self, 'handle_index', None)
+            
+            # Also check for hover state from the gizmo system
+            is_highlighted = getattr(self, 'is_highlight', False)
+            
+            # Draw corner handles (squares)
+            for i, corner in enumerate(corners):
+                view_x = corner.x - res_x / 2
+                view_y = corner.y - res_y / 2
+                screen_co = view2d.view_to_region(view_x, view_y, clip=False)
+                
+                if screen_co:
+                    # Color priority: Active (dragging) > Hovered > Normal
+                    if active_handle_type == "corner" and active_handle_index == i:
+                        color = (1.0, 0.5, 0.0, 1.0)  # Orange for active (dragging) handle
+                    elif is_highlighted and active_handle_type == "corner" and active_handle_index == i:
+                        color = (1.0, 0.5, 0.0, 0.8)  # Orange for hovered handle
+                    else:
+                        color = (1.0, 1.0, 1.0, 0.8)  # White for inactive handles
+                    self._draw_square_at_position(shader, screen_co, color, 13)
+            
+            # Draw edge handles (squares)
+            for i, midpoint in enumerate(edge_midpoints):
+                view_x = midpoint.x - res_x / 2
+                view_y = midpoint.y - res_y / 2
+                screen_co = view2d.view_to_region(view_x, view_y, clip=False)
+                
+                if screen_co:
+                    # Color priority: Active (dragging) > Hovered > Normal
+                    if active_handle_type == "edge" and active_handle_index == i:
+                        color = (1.0, 0.5, 0.0, 1.0)  # Orange for active (dragging) handle
+                    elif is_highlighted and active_handle_type == "edge" and active_handle_index == i:
+                        color = (1.0, 0.5, 0.0, 0.8)  # Orange for hovered handle
+                    else:
+                        color = (1.0, 1.0, 1.0, 0.8)  # White for inactive handles
+                    self._draw_square_at_position(shader, screen_co, color, 13)
+            
+            # Draw center handle (crop symbol)
+            center_view_x = pivot_x - res_x / 2
+            center_view_y = pivot_y - res_y / 2
+            center_screen = view2d.view_to_region(center_view_x, center_view_y, clip=False)
+            
+            if center_screen:
+                self._draw_crop_symbol_at_position(shader, center_screen, (1.0, 1.0, 1.0, 0.8))
+            
+            print(f"🎨 Successfully drew {len(corners)} corner + {len(edge_midpoints)} edge + 1 center handles with GPU")
+            
+        except Exception as e:
+            print(f"⚠️ GPU drawing error: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def _draw_square_at_position(self, shader, position, color, size):
+        """Draw a square handle at the given screen position with rotation like modal operator"""
+        try:
+            x, y = position
+            half_size = size / 2
+            
+            # This is used during modal drawing - apply rotation like modal operator
+            context = bpy.context
+            strip = context.scene.sequence_editor.active_strip
+            angle = 0
+            if strip:
+                if hasattr(strip, 'rotation_start'):
+                    angle = math.radians(strip.rotation_start)
+                elif hasattr(strip, 'rotation'):
+                    angle = strip.rotation
+                elif hasattr(strip, 'transform') and hasattr(strip.transform, 'rotation'):
+                    angle = strip.transform.rotation
+            
+            # Create rotated square vertices exactly like modal operator  
+            if abs(angle) > 0.01:  # If strip is rotated
+                cos_a = math.cos(angle)
+                sin_a = math.sin(angle)
+                
+                # Define square corners relative to center - match modal operator exactly
+                corners_rel = [
+                    (-half_size, -half_size), (half_size, -half_size), 
+                    (half_size, half_size), (-half_size, half_size)
+                ]
+                
+                # Rotate and translate
+                vertices = []
+                for x_rel, y_rel in corners_rel:
+                    rot_x = x_rel * cos_a - y_rel * sin_a + x
+                    rot_y = x_rel * sin_a + y_rel * cos_a + y
+                    vertices.append((rot_x, rot_y))
+                
+                # Reorder vertices like modal operator for proper winding
+                vertices = [vertices[0], vertices[1], vertices[3], vertices[2]]
+            else:
+                # No rotation - regular square
+                vertices = [
+                    (x - half_size, y - half_size),
+                    (x + half_size, y - half_size),
+                    (x - half_size, y + half_size),
+                    (x + half_size, y + half_size)
+                ]
+            
+            indices = [(0, 1, 2), (2, 1, 3)]
+            
+            batch = batch_for_shader(shader, 'TRIS', {"pos": vertices}, indices=indices)
+            shader.bind()
+            shader.uniform_float("color", color)
+            batch.draw(shader)
+            
+        except Exception as e:
+            print(f"⚠️ Square drawing error: {e}")
+    
+    def _draw_crop_symbol_at_position(self, shader, position, color):
+        """Draw crop symbol at the given screen position"""
+        try:
+            x, y = position
+            size = 8  # Match modal operator exactly
+            
+            # Draw simple cross for crop symbol
+            # Horizontal line
+            h_vertices = [(x - size, y), (x + size, y), (x + size, y + 1), (x - size, y + 1)]
+            h_indices = [(0, 1, 2), (2, 3, 0)]
+            
+            # Vertical line  
+            v_vertices = [(x, y - size), (x + 1, y - size), (x + 1, y + size), (x, y + size)]
+            v_indices = [(0, 1, 2), (2, 3, 0)]
+            
+            # Draw horizontal line
+            batch_h = batch_for_shader(shader, 'TRIS', {"pos": h_vertices}, indices=h_indices)
+            shader.bind()
+            shader.uniform_float("color", color)
+            batch_h.draw(shader)
+            
+            # Draw vertical line
+            batch_v = batch_for_shader(shader, 'TRIS', {"pos": v_vertices}, indices=v_indices)
+            batch_v.draw(shader)
+            
+        except Exception as e:
+            print(f"⚠️ Crop symbol drawing error: {e}")
+    
+    
     def exit(self, context, cancel):
         """Handle gizmo exit"""
         if self.handle_type != "center":
@@ -325,6 +560,15 @@ class EASYCROP_GT_crop_handle(Gizmo):
             
             # Clear drag state to allow gizmo repositioning again
             EASYCROP_GGT_crop_handles._drag_active = False
+            
+            # Remove modal drawing handler
+            try:
+                if hasattr(self, '_modal_draw_handler') and self._modal_draw_handler:
+                    bpy.types.SpaceSequenceEditor.draw_handler_remove(self._modal_draw_handler, 'PREVIEW')
+                    self._modal_draw_handler = None
+                    print("🎨 Removed modal drawing handler")
+            except Exception as e:
+                print(f"⚠️ Could not remove modal drawing handler: {e}")
             
             # Restore transform gizmos
             try:
@@ -617,6 +861,7 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
         # Create corner handles (4)
         for i in range(4):
             gizmo = self.gizmos.new(EASYCROP_GT_crop_handle.bl_idname)
+            # Set properties AFTER creation but BEFORE setup calls
             gizmo.handle_type = "corner"
             gizmo.handle_index = i
             gizmo.select_id = i
@@ -625,12 +870,14 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
             gizmo.use_event_handle_all = True
             gizmo.use_draw_modal = True  
             gizmo.use_grab_cursor = True
+            gizmo.use_draw_select = True  # Enable select drawing for visibility during modal
             
-            print(f"✓ Created corner handle {i}")
+            print(f"✓ Created corner handle {i} with type={gizmo.handle_type}, index={gizmo.handle_index}")
         
         # Create edge handles (4)  
         for i in range(4):
             gizmo = self.gizmos.new(EASYCROP_GT_crop_handle.bl_idname)
+            # Set properties AFTER creation but BEFORE setup calls
             gizmo.handle_type = "edge"
             gizmo.handle_index = i
             gizmo.select_id = i + 4
@@ -639,18 +886,21 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
             gizmo.use_event_handle_all = True
             gizmo.use_draw_modal = True
             gizmo.use_grab_cursor = True
+            gizmo.use_draw_select = True  # Enable select drawing for visibility during modal
             
-            print(f"✓ Created edge handle {i}")
+            print(f"✓ Created edge handle {i} with type={gizmo.handle_type}, index={gizmo.handle_index}")
         
         # Create center handle (1)
         gizmo = self.gizmos.new(EASYCROP_GT_crop_handle.bl_idname)
+        # Set properties AFTER creation but BEFORE setup calls
         gizmo.handle_type = "center"
         gizmo.handle_index = 0
         gizmo.select_id = 8
         
         # Center handle needs click handling but not dragging
         gizmo.use_event_handle_all = True
-        print(f"✓ Created center handle")
+        gizmo.use_draw_select = True  # Enable select drawing
+        print(f"✓ Created center handle with type={gizmo.handle_type}, index={gizmo.handle_index}")
         
         print(f"🎯 Created {len(self.gizmos)} crop handle gizmos total")
     
@@ -694,36 +944,54 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
                 # Position handles exactly like modal operator - no visual mapping at positioning level
                 # The flip remapping happens during crop value updates, not handle positioning
                 
-                # Get strip rotation for handle orientation
-                strip_angle = 0
-                if hasattr(active_strip, 'rotation_start'):
-                    strip_angle = math.radians(active_strip.rotation_start)
-                elif hasattr(active_strip, 'transform') and hasattr(active_strip.transform, 'rotation'):
-                    strip_angle = active_strip.transform.rotation
+                # Convert corners to screen coordinates for rotation calculation
+                screen_corners = []
+                for corner in corners:
+                    view_x = corner.x - res_x / 2
+                    view_y = corner.y - res_y / 2
+                    screen_co = view2d.view_to_region(view_x, view_y, clip=False)
+                    screen_corners.append(Vector(screen_co))
                 
-                # Adjust angle for flips (same as modal operator logic)
-                if flip_x != flip_y:
-                    strip_angle = -strip_angle
-                
-                # Position corner handles (0-3) with rotation to match strip
+                # Position corner handles (0-3) with geometry-based rotation like modal operator
                 for i in range(4):
                     if i < len(self.gizmos):
-                        corner = corners[i]
-                        view_x = corner.x - res_x / 2
-                        view_y = corner.y - res_y / 2
-                        # Convert to screen coordinates like the modal operator does
-                        screen_co = view2d.view_to_region(view_x, view_y, clip=False)
+                        screen_co = screen_corners[i]
                         
-                        # Create transformation matrix with rotation to match strip
+                        # Calculate rotation based on geometry like fixed modal operator
+                        rotation_angle = 0
+                        
+                        # Check if we need rotation (same threshold as modal operator)
+                        raw_angle = 0
+                        if hasattr(active_strip, 'rotation_start'):
+                            raw_angle = math.radians(active_strip.rotation_start)
+                        elif hasattr(active_strip, 'transform') and hasattr(active_strip.transform, 'rotation'):
+                            raw_angle = active_strip.transform.rotation
+                        
+                        if abs(raw_angle) > 0.01:  # If strip is rotated
+                            # Use geometry-based calculation like modal operator corner handles
+                            corner_idx = i
+                            next_edge_idx = corner_idx
+                            corner1_idx = next_edge_idx  
+                            corner2_idx = (next_edge_idx + 1) % 4
+                            
+                            next_edge_vec = screen_corners[corner2_idx] - screen_corners[corner1_idx]
+                            next_edge_angle = math.atan2(next_edge_vec.y, next_edge_vec.x)
+                            rotation_angle = next_edge_angle - math.pi / 2  # Same calculation as modal operator
+                        
+                        # Create transformation matrix with geometry-based rotation
                         transform_matrix = Matrix.Translation((screen_co[0], screen_co[1], 0))
-                        if abs(strip_angle) > 0.01:  # Only apply rotation if significant
-                            rotation_matrix = Matrix.Rotation(strip_angle, 4, 'Z')
+                        if abs(rotation_angle) > 0.01:  # Only apply rotation if significant
+                            rotation_matrix = Matrix.Rotation(rotation_angle, 4, 'Z')  # Normal rotation with strip
                             transform_matrix = transform_matrix @ rotation_matrix
                         
                         self.gizmos[i].matrix_basis = transform_matrix
-                        print(f"📍 Corner {i}: view({view_x:.1f}, {view_y:.1f}) -> screen({screen_co[0]:.1f}, {screen_co[1]:.1f}) [angle={math.degrees(strip_angle):.1f}°, flip_x={flip_x}, flip_y={flip_y}]")
+                        
+                        # CRITICAL: Force visibility
+                        self.gizmos[i].hide = False
+                        self.gizmos[i].alpha = 0.8
+                        print(f"📍 Corner {i}: view({screen_co[0]:.1f}, {screen_co[1]:.1f}) -> screen({screen_co[0]:.1f}, {screen_co[1]:.1f}) [geom_angle={math.degrees(rotation_angle):.1f}°, flip_x={flip_x}, flip_y={flip_y}]")
                 
-                # Position edge handles (4-7) - direct mapping like modal operator
+                # Position edge handles (4-7) with geometry-based rotation like modal operator
                 for i in range(4):
                     gizmo_idx = i + 4
                     if gizmo_idx < len(self.gizmos):
@@ -732,8 +1000,40 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
                         view_y = midpoint.y - res_y / 2
                         # Convert to screen coordinates like the modal operator does
                         screen_co = view2d.view_to_region(view_x, view_y, clip=False)
-                        self.gizmos[gizmo_idx].matrix_basis = Matrix.Translation((screen_co[0], screen_co[1], 0))
-                        print(f"📍 Edge {i}: view({view_x:.1f}, {view_y:.1f}) -> screen({screen_co[0]:.1f}, {screen_co[1]:.1f}) [flip_x={flip_x}, flip_y={flip_y}]")
+                        
+                        # Calculate rotation based on geometry like modal operator edge handles
+                        rotation_angle = 0
+                        
+                        # Check if we need rotation (same threshold as modal operator)
+                        raw_angle = 0
+                        if hasattr(active_strip, 'rotation_start'):
+                            raw_angle = math.radians(active_strip.rotation_start)
+                        elif hasattr(active_strip, 'transform') and hasattr(active_strip.transform, 'rotation'):
+                            raw_angle = active_strip.transform.rotation
+                        
+                        if abs(raw_angle) > 0.01:  # If strip is rotated
+                            # Use geometry-based calculation like modal operator edge handles
+                            edge_idx = i
+                            corner1_idx = edge_idx
+                            corner2_idx = (edge_idx + 1) % 4
+                            
+                            # Get edge angle in screen space
+                            edge_vec = screen_corners[corner2_idx] - screen_corners[corner1_idx]
+                            edge_angle = math.atan2(edge_vec.y, edge_vec.x)
+                            rotation_angle = edge_angle - math.pi / 2  # Same calculation as modal operator
+                        
+                        # Create transformation matrix with geometry-based rotation
+                        transform_matrix = Matrix.Translation((screen_co[0], screen_co[1], 0))
+                        if abs(rotation_angle) > 0.01:  # Only apply rotation if significant
+                            rotation_matrix = Matrix.Rotation(rotation_angle, 4, 'Z')  # Normal rotation with strip
+                            transform_matrix = transform_matrix @ rotation_matrix
+                        
+                        self.gizmos[gizmo_idx].matrix_basis = transform_matrix
+                        
+                        # CRITICAL: Force visibility
+                        self.gizmos[gizmo_idx].hide = False
+                        self.gizmos[gizmo_idx].alpha = 0.8
+                        print(f"📍 Edge {i}: view({view_x:.1f}, {view_y:.1f}) -> screen({screen_co[0]:.1f}, {screen_co[1]:.1f}) [geom_angle={math.degrees(rotation_angle):.1f}°, flip_x={flip_x}, flip_y={flip_y}]")
                 
                 # Position center handle (8)
                 if len(self.gizmos) > 8:
@@ -742,6 +1042,10 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
                     # Convert to screen coordinates like the modal operator does
                     screen_co = view2d.view_to_region(view_x, view_y, clip=False)
                     self.gizmos[8].matrix_basis = Matrix.Translation((screen_co[0], screen_co[1], 0))
+                    
+                    # CRITICAL: Force visibility
+                    self.gizmos[8].hide = False
+                    self.gizmos[8].alpha = 0.8
                     print(f"📍 Center: view({view_x:.1f}, {view_y:.1f}) -> screen({screen_co[0]:.1f}, {screen_co[1]:.1f})")
             
         except Exception as e:
@@ -750,6 +1054,32 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
     def draw_prepare(self, context):
         """Prepare for drawing"""
         self.refresh(context)
+    
+    def draw_select(self, context):
+        """Draw during modal operations - ensure handles stay visible"""
+        print(f"🎨 GROUP DRAW_SELECT called for {len(self.gizmos)} gizmos")
+        # Force all handles to draw during modal operations
+        # This helps keep non-active handles visible during drag operations
+        try:
+            # Get strip geometry for drawing all handles
+            scene = context.scene
+            if scene.sequence_editor and scene.sequence_editor.active_strip:
+                active_strip = scene.sequence_editor.active_strip
+                if hasattr(active_strip, 'crop'):
+                    # Draw all handles manually during modal
+                    self._draw_all_handles_manual(context, during_modal=True)
+        except Exception as e:
+            print(f"Error drawing handles during modal: {e}")
+    
+    def _draw_all_handles_manual(self, context, during_modal=False):
+        """Manually draw all handles - fallback for modal operations"""
+        try:
+            for i, gizmo in enumerate(self.gizmos):
+                if hasattr(gizmo, '_draw_handle_common'):
+                    print(f"  🎨 Manually drawing gizmo {i} ({gizmo.handle_type}[{gizmo.handle_index}])")
+                    gizmo._draw_handle_common(context, during_modal=during_modal)
+        except Exception as e:
+            print(f"Manual draw error: {e}")
 
 
 def register_crop_handles_gizmo():
@@ -770,7 +1100,11 @@ def register_crop_handles_gizmo():
                 wm.gizmo_group_type_ensure(EASYCROP_GGT_crop_handles.bl_idname)
                 print("✓ gizmo_group_type_ensure() called successfully")
         except Exception as e:
-            print(f"ℹ gizmo_group_type_ensure() not needed: {e}")
+            # This error is expected for PERSISTENT gizmo groups
+            if "PERSISTENT" in str(e):
+                print("ℹ PERSISTENT gizmo group registration - this is normal")
+            else:
+                print(f"ℹ gizmo_group_type_ensure() not needed: {e}")
             
         print("=== CROP HANDLES GIZMO REGISTRATION COMPLETE ===")
         return True

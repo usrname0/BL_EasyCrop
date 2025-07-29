@@ -69,7 +69,7 @@ def draw_crop_handles():
     mouse_y = draw_data.get('mouse_y', 0)
     
     # Get theme colors - match gizmo version
-    active_color = (1.0, 1.0, 1.0, 1.0)  # White for active/dragging
+    active_color = (1.0, 0.5, 0.0, 1.0)  # Orange for active/dragging (like gizmo)
     hover_color = (1.0, 0.5, 0.0, 1.0)   # Orange for hover (like gizmo)
     handle_color = (1.0, 1.0, 1.0, 0.7)  # White for normal
     line_color = (1.0, 1.0, 1.0, 0.5)
@@ -235,10 +235,30 @@ def _draw_crop_handles(screen_corners, screen_midpoints, active_corner, hover_co
         
         # Create handle vertices - rotated to match strip
         if abs(angle) > 0.01:  # If strip is rotated
-            # Calculate handle rotation
-            if i < 4:  # Corner handle
-                handle_angle = angle
-            else:  # Edge handle - align with edge direction
+            # Calculate handle rotation - use edge-based calculation for consistency
+            if i < 4:  # Corner handle - calculate from adjacent edges like edge handles do
+                # For corner handles, use the same edge-based approach as edge handles
+                # This ensures consistent rotation between corners and edges
+                corner_idx = i
+                # Get the two edges adjacent to this corner
+                prev_edge_idx = (corner_idx - 1) % 4
+                next_edge_idx = corner_idx
+                
+                # Calculate average angle of the two adjacent edges
+                prev_corner1 = prev_edge_idx
+                prev_corner2 = (prev_edge_idx + 1) % 4
+                next_corner1 = next_edge_idx  
+                next_corner2 = (next_edge_idx + 1) % 4
+                
+                prev_edge_vec = screen_corners[prev_corner2] - screen_corners[prev_corner1]
+                next_edge_vec = screen_corners[next_corner2] - screen_corners[next_corner1]
+                
+                prev_edge_angle = math.atan2(prev_edge_vec.y, prev_edge_vec.x)
+                next_edge_angle = math.atan2(next_edge_vec.y, next_edge_vec.x)
+                
+                # Use the average angle, or just use one of them for simplicity
+                handle_angle = next_edge_angle - math.pi / 2  # Perpendicular to edge like edge handles
+            else:  # Edge handle - align with edge direction (unchanged)
                 edge_idx = i - 4
                 corner1_idx = edge_idx
                 corner2_idx = (edge_idx + 1) % 4
