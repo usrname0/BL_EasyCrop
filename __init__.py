@@ -207,19 +207,58 @@ def draw_crop_tool_settings(context, layout, tool):
 EASYCROP_TOOL_crop.draw_settings = staticmethod(draw_crop_tool_settings)
 
 
+def _get_crop_keymap_shortcut():
+    """Get the current keymap shortcut for the crop operator"""
+    try:
+        wm = bpy.context.window_manager
+        km = wm.keyconfigs.user.keymaps.get('Sequencer')
+        if not km:
+            km = wm.keyconfigs.default.keymaps.get('Sequencer')
+        
+        if km:
+            for kmi in km.keymap_items:
+                if kmi.idname == "sequencer.crop" and kmi.active:
+                    # Build shortcut string like "C" or "Shift+C" etc.
+                    shortcut_parts = []
+                    if kmi.ctrl:
+                        shortcut_parts.append("Ctrl")
+                    if kmi.alt:
+                        shortcut_parts.append("Alt")
+                    if kmi.shift:
+                        shortcut_parts.append("Shift")
+                    if kmi.oskey:
+                        shortcut_parts.append("Cmd" if bpy.app.version < (3, 0, 0) else "OS")
+                    
+                    # Add the main key
+                    shortcut_parts.append(kmi.type)
+                    
+                    return "+".join(shortcut_parts)
+    except:
+        pass
+    return None
+
+
 # Menu functions
 def menu_func_strip_transform(self, context):
     """Add Easy Crop to Strip > Transform menu"""
     if context.space_data.view_type in {'PREVIEW', 'SEQUENCER_PREVIEW'}:
-        # Use gizmo tool with standard menu formatting
-        self.layout.operator("wm.tool_set_by_id", text="Crop").name = "sequencer.crop_handles_tool"
+        # Use modal operator like native transforms, with keymap shortcut
+        keymap_shortcut = _get_crop_keymap_shortcut()
+        if keymap_shortcut:
+            self.layout.operator("sequencer.crop", text=f"Crop ({keymap_shortcut})")
+        else:
+            self.layout.operator("sequencer.crop", text="Crop")
 
 
 def menu_func_image_transform(self, context):
     """Add Easy Crop to Image > Transform menu"""
     if context.space_data.view_type in {'PREVIEW', 'SEQUENCER_PREVIEW'}:
-        # Use gizmo tool with standard menu formatting
-        self.layout.operator("wm.tool_set_by_id", text="Crop").name = "sequencer.crop_handles_tool"
+        # Use modal operator like native transforms, with keymap shortcut
+        keymap_shortcut = _get_crop_keymap_shortcut()
+        if keymap_shortcut:
+            self.layout.operator("sequencer.crop", text=f"Crop ({keymap_shortcut})")
+        else:
+            self.layout.operator("sequencer.crop", text="Crop")
 
 
 def menu_func_image_clear(self, context):

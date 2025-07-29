@@ -130,7 +130,7 @@ class EASYCROP_GT_crop_handle(Gizmo):
     
     
     def _draw_crop_symbol(self, color):
-        """Draw the crop symbol (for center handle)"""
+        """Draw the crop symbol (for center handle) - match modal operator exactly"""
         
         try:
             center_pos = self.matrix_basis.translation
@@ -146,18 +146,37 @@ class EASYCROP_GT_crop_handle(Gizmo):
             line_shader.bind()
             line_shader.uniform_float("color", color)
             
-            # Corner brackets
-            tl_vertical = [(center_x - outer_size, center_y + 1), (center_x - outer_size, center_y + outer_size)]
-            tl_horizontal = [(center_x - outer_size, center_y + outer_size), (center_x - 1, center_y + outer_size)]
-            br_horizontal = [(center_x + 1, center_y - outer_size), (center_x + outer_size, center_y - outer_size)]
-            br_vertical = [(center_x + outer_size, center_y - outer_size), (center_x + outer_size, center_y - 1)]
+            # Corner brackets - match modal operator exactly
+            # Top-left L-shape
+            tl_vertical = [
+                (center_x - outer_size, center_y + 1),
+                (center_x - outer_size, center_y + outer_size)
+            ]
+            tl_horizontal = [
+                (center_x - outer_size, center_y + outer_size),
+                (center_x - 1, center_y + outer_size)
+            ]
+            
+            # Bottom-right L-shape
+            br_horizontal = [
+                (center_x + 1, center_y - outer_size),
+                (center_x + outer_size, center_y - outer_size)
+            ]
+            br_vertical = [
+                (center_x + outer_size, center_y - outer_size),
+                (center_x + outer_size, center_y - 1)
+            ]
             
             # Inner viewing rectangle
             inner_rect_lines = [
-                [(center_x - inner_size, center_y - inner_size), (center_x + inner_size, center_y - inner_size)],
-                [(center_x + inner_size, center_y - inner_size), (center_x + inner_size, center_y + inner_size)],
-                [(center_x + inner_size, center_y + inner_size), (center_x - inner_size, center_y + inner_size)],
-                [(center_x - inner_size, center_y + inner_size), (center_x - inner_size, center_y - inner_size)]
+                [(center_x - inner_size, center_y - inner_size), 
+                 (center_x + inner_size, center_y - inner_size)],
+                [(center_x + inner_size, center_y - inner_size),
+                 (center_x + inner_size, center_y + inner_size)],
+                [(center_x + inner_size, center_y + inner_size),
+                 (center_x - inner_size, center_y + inner_size)],
+                [(center_x - inner_size, center_y + inner_size),
+                 (center_x - inner_size, center_y - inner_size)]
             ]
             
             # Draw all elements
