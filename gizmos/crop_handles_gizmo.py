@@ -544,29 +544,62 @@ class EASYCROP_GT_crop_handle(Gizmo):
             print(f"⚠️ Square drawing error: {e}")
     
     def _draw_crop_symbol_at_position(self, shader, position, color):
-        """Draw crop symbol at the given screen position"""
+        """Draw crop symbol at the given screen position - match normal gizmo version"""
         try:
-            x, y = position
-            size = 8  # Match modal operator exactly
+            center_x, center_y = position
             
-            # Draw simple cross for crop symbol
-            # Horizontal line
-            h_vertices = [(x - size, y), (x + size, y), (x + size, y + 1), (x - size, y + 1)]
-            h_indices = [(0, 1, 2), (2, 3, 0)]
+            # Symbol dimensions - match normal gizmo exactly
+            outer_size = 8
+            inner_size = 5
             
-            # Vertical line  
-            v_vertices = [(x, y - size), (x + 1, y - size), (x + 1, y + size), (x, y + size)]
-            v_indices = [(0, 1, 2), (2, 3, 0)]
+            line_shader = gpu.shader.from_builtin('UNIFORM_COLOR')
+            gpu.state.line_width_set(1.5)  # Match normal gizmo exactly
+            line_shader.bind()
+            line_shader.uniform_float("color", color)
             
-            # Draw horizontal line
-            batch_h = batch_for_shader(shader, 'TRIS', {"pos": h_vertices}, indices=h_indices)
-            shader.bind()
-            shader.uniform_float("color", color)
-            batch_h.draw(shader)
+            # Corner brackets - match normal gizmo exactly
+            # Top-left L-shape
+            tl_vertical = [
+                (center_x - outer_size, center_y + 1),
+                (center_x - outer_size, center_y + outer_size)
+            ]
+            tl_horizontal = [
+                (center_x - outer_size, center_y + outer_size),
+                (center_x - 1, center_y + outer_size)
+            ]
             
-            # Draw vertical line
-            batch_v = batch_for_shader(shader, 'TRIS', {"pos": v_vertices}, indices=v_indices)
-            batch_v.draw(shader)
+            # Bottom-right L-shape
+            br_horizontal = [
+                (center_x + 1, center_y - outer_size),
+                (center_x + outer_size, center_y - outer_size)
+            ]
+            br_vertical = [
+                (center_x + outer_size, center_y - outer_size),
+                (center_x + outer_size, center_y - 1)
+            ]
+            
+            # Inner viewing rectangle
+            inner_rect_lines = [
+                [(center_x - inner_size, center_y - inner_size), 
+                 (center_x + inner_size, center_y - inner_size)],
+                [(center_x + inner_size, center_y - inner_size),
+                 (center_x + inner_size, center_y + inner_size)],
+                [(center_x + inner_size, center_y + inner_size),
+                 (center_x - inner_size, center_y + inner_size)],
+                [(center_x - inner_size, center_y + inner_size),
+                 (center_x - inner_size, center_y - inner_size)]
+            ]
+            
+            # Draw all elements
+            for line_verts in [tl_vertical, tl_horizontal, br_horizontal, br_vertical]:
+                batch = batch_for_shader(line_shader, 'LINES', {"pos": line_verts})
+                batch.draw(line_shader)
+            
+            for line_verts in inner_rect_lines:
+                batch = batch_for_shader(line_shader, 'LINES', {"pos": line_verts})
+                batch.draw(line_shader)
+            
+            gpu.state.line_width_set(1.0)
             
         except Exception as e:
             print(f"⚠️ Crop symbol drawing error: {e}")
