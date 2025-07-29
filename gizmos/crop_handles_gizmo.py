@@ -204,16 +204,10 @@ class EASYCROP_GT_crop_handle(Gizmo):
             # Handle size - match modal operator exactly
             size = 6
             
-            # Get rotation directly from strip like modal operator does
-            strip = context.scene.sequence_editor.active_strip
-            rotation_angle = 0
-            if strip:
-                if hasattr(strip, 'rotation_start'):
-                    rotation_angle = math.radians(strip.rotation_start)
-                elif hasattr(strip, 'rotation'):
-                    rotation_angle = strip.rotation
-                elif hasattr(strip, 'transform') and hasattr(strip.transform, 'rotation'):
-                    rotation_angle = strip.transform.rotation
+            # Use the same rotation that was calculated in refresh() - stored in the matrix
+            # Extract rotation from the gizmo's matrix_basis which already has proper flip compensation
+            rotation_matrix = self.matrix_basis.to_3x3()
+            rotation_angle = rotation_matrix.to_euler().z
             
             # Apply rotation to square vertices like modal operator
             if abs(rotation_angle) > 0.01:  # If there's meaningful rotation
@@ -612,6 +606,65 @@ class EASYCROP_GT_crop_handle(Gizmo):
             
             # Clear drag state to allow gizmo repositioning again
             EASYCROP_GGT_crop_handles._drag_active = False
+            
+            # TEST: Deferred cursor warp to final handle position + 300px offset (unless cancelled)
+            if not cancel:
+                try:
+                    # Calculate where the handle should be after the drag
+                    strip = context.scene.sequence_editor.active_strip
+                    if strip and hasattr(strip, 'crop'):
+                        # Get updated strip geometry with final crop values
+                        corners, (pivot_x, pivot_y), _ = get_strip_geometry_with_flip_support(strip, context.scene)
+                        
+                        # Calculate final handle position
+                        final_handle_pos = None
+                        
+                        if self.handle_type == "corner" and self.handle_index < len(corners):
+                            final_handle_pos = corners[self.handle_index]
+                        elif self.handle_type == "edge" and self.handle_index < 4:
+                            # Calculate edge midpoint
+                            next_i = (self.handle_index + 1) % 4
+                            final_handle_pos = (corners[self.handle_index] + corners[next_i]) / 2
+                        
+                        if final_handle_pos:
+                            # Convert to screen coordinates
+                            region = context.region
+                            if region and region.view2d:
+                                res_x = context.scene.render.resolution_x
+                                res_y = context.scene.render.resolution_y
+                                
+                                view_x = final_handle_pos.x - res_x / 2
+                                view_y = final_handle_pos.y - res_y / 2
+                                
+                                screen_co = region.view2d.view_to_region(view_x, view_y, clip=False)
+                                
+                                # Convert region coordinates to window coordinates for cursor_warp
+                                window_x = region.x + int(screen_co[0])
+                                window_y = region.y + int(screen_co[1])
+                                
+                                # Use deferred timer to warp cursor to final handle position after Blender's automatic restoration
+                                final_x = window_x
+                                final_y = window_y
+                                
+                                def deferred_cursor_warp():
+                                    try:
+                                        # Warp cursor to final position and restore cursor visibility
+                                        bpy.context.window.cursor_warp(final_x, final_y)
+                                        bpy.context.window.cursor_modal_restore()
+                                        print(f"🎯 Warped cursor to final handle position: ({final_x}, {final_y})")
+                                    except Exception as e:
+                                        print(f"⚠️ Deferred cursor warp failed: {e}")
+                                    return None  # Don't repeat the timer
+                                
+                                # Hide cursor immediately to prevent seeing the snap-back
+                                bpy.context.window.cursor_modal_set('NONE')
+                                
+                                # Schedule cursor warp to happen after Blender's restoration (50ms delay)
+                                bpy.app.timers.register(deferred_cursor_warp, first_interval=0.05)
+                                print(f"📅 Scheduled cursor warp to final handle position: ({final_x}, {final_y})")
+                                
+                except Exception as e:
+                    print(f"⚠️ Could not schedule deferred cursor warp: {e}")
             
             # Remove modal drawing handler
             try:
@@ -1020,20 +1073,38 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
                             raw_angle = active_strip.transform.rotation
                         
                         if abs(raw_angle) > 0.01:  # If strip is rotated
-                            # Use geometry-based calculation like modal operator corner handles
-                            corner_idx = i
-                            next_edge_idx = corner_idx
-                            corner1_idx = next_edge_idx  
-                            corner2_idx = (next_edge_idx + 1) % 4
-                            
-                            next_edge_vec = screen_corners[corner2_idx] - screen_corners[corner1_idx]
-                            next_edge_angle = math.atan2(next_edge_vec.y, next_edge_vec.x)
-                            rotation_angle = next_edge_angle - math.pi / 2  # Same calculation as modal operator
+                            # EXACT COPY of modal operator rotation calculation
+                            if i < 4:  # Corner handle - same as modal operator
+                                corner_idx = i
+                                prev_edge_idx = (corner_idx - 1) % 4
+                                next_edge_idx = corner_idx
+                                
+                                prev_corner1 = prev_edge_idx
+                                prev_corner2 = (prev_edge_idx + 1) % 4
+                                next_corner1 = next_edge_idx  
+                                next_corner2 = (next_edge_idx + 1) % 4
+                                
+                                prev_edge_vec = screen_corners[prev_corner2] - screen_corners[prev_corner1]
+                                next_edge_vec = screen_corners[next_corner2] - screen_corners[next_corner1]
+                                
+                                prev_edge_angle = math.atan2(prev_edge_vec.y, prev_edge_vec.x)
+                                next_edge_angle = math.atan2(next_edge_vec.y, next_edge_vec.x)
+                                
+                                rotation_angle = next_edge_angle - math.pi / 2  # Same as modal operator
+                            else:  # Edge handle - same as modal operator
+                                edge_idx = i - 4
+                                corner1_idx = edge_idx
+                                corner2_idx = (edge_idx + 1) % 4
+                                
+                                edge_vec = screen_corners[corner2_idx] - screen_corners[corner1_idx]
+                                edge_angle = math.atan2(edge_vec.y, edge_vec.x)
+                                rotation_angle = edge_angle - math.pi / 2  # Same as modal operator
                         
                         # Create transformation matrix with geometry-based rotation
+                        # Note: No flip compensation needed - crop_core already handles this
                         transform_matrix = Matrix.Translation((screen_co[0], screen_co[1], 0))
                         if abs(rotation_angle) > 0.01:  # Only apply rotation if significant
-                            rotation_matrix = Matrix.Rotation(rotation_angle, 4, 'Z')  # Normal rotation with strip
+                            rotation_matrix = Matrix.Rotation(rotation_angle, 4, 'Z')
                             transform_matrix = transform_matrix @ rotation_matrix
                         
                         self.gizmos[i].matrix_basis = transform_matrix
@@ -1064,20 +1135,38 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
                             raw_angle = active_strip.transform.rotation
                         
                         if abs(raw_angle) > 0.01:  # If strip is rotated
-                            # Use geometry-based calculation like modal operator edge handles
-                            edge_idx = i
-                            corner1_idx = edge_idx
-                            corner2_idx = (edge_idx + 1) % 4
-                            
-                            # Get edge angle in screen space
-                            edge_vec = screen_corners[corner2_idx] - screen_corners[corner1_idx]
-                            edge_angle = math.atan2(edge_vec.y, edge_vec.x)
-                            rotation_angle = edge_angle - math.pi / 2  # Same calculation as modal operator
+                            # EXACT COPY of modal operator rotation calculation
+                            if i < 4:  # Corner handle - same as modal operator
+                                corner_idx = i
+                                prev_edge_idx = (corner_idx - 1) % 4
+                                next_edge_idx = corner_idx
+                                
+                                prev_corner1 = prev_edge_idx
+                                prev_corner2 = (prev_edge_idx + 1) % 4
+                                next_corner1 = next_edge_idx  
+                                next_corner2 = (next_edge_idx + 1) % 4
+                                
+                                prev_edge_vec = screen_corners[prev_corner2] - screen_corners[prev_corner1]
+                                next_edge_vec = screen_corners[next_corner2] - screen_corners[next_corner1]
+                                
+                                prev_edge_angle = math.atan2(prev_edge_vec.y, prev_edge_vec.x)
+                                next_edge_angle = math.atan2(next_edge_vec.y, next_edge_vec.x)
+                                
+                                rotation_angle = next_edge_angle - math.pi / 2  # Same as modal operator
+                            else:  # Edge handle - same as modal operator
+                                edge_idx = i - 4
+                                corner1_idx = edge_idx
+                                corner2_idx = (edge_idx + 1) % 4
+                                
+                                edge_vec = screen_corners[corner2_idx] - screen_corners[corner1_idx]
+                                edge_angle = math.atan2(edge_vec.y, edge_vec.x)
+                                rotation_angle = edge_angle - math.pi / 2  # Same as modal operator
                         
                         # Create transformation matrix with geometry-based rotation
+                        # Note: No flip compensation needed - crop_core already handles this
                         transform_matrix = Matrix.Translation((screen_co[0], screen_co[1], 0))
                         if abs(rotation_angle) > 0.01:  # Only apply rotation if significant
-                            rotation_matrix = Matrix.Rotation(rotation_angle, 4, 'Z')  # Normal rotation with strip
+                            rotation_matrix = Matrix.Rotation(rotation_angle, 4, 'Z')
                             transform_matrix = transform_matrix @ rotation_matrix
                         
                         self.gizmos[gizmo_idx].matrix_basis = transform_matrix

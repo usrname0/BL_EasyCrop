@@ -3,7 +3,6 @@
 2. Use docstrings
 3. Discuss big changes before going ahead.
 
-
 # BL EasyCrop - Context for Claude
 
 ## Project Overview
@@ -75,30 +74,50 @@ D:\Dev\BL_EasyCrop\BL_EasyCrop\
 - **Visual Consistency**: Users see handles in logical positions regardless of flips
 - **Coordinate Translation**: Internal coordinate system accounts for all transform states
 
-## Testing and Validation Commands
-- **Lint**: `npm run lint` (if available)
-- **TypeCheck**: `npm run typecheck` (if available)
-- Always run validation after making changes to ensure code quality
-
-## Development Branch
-Currently working on: `experimental-gizmo-cropping`
-
 ## Usage Patterns
 1. **Standard Cropping**: Activate gizmo tool (C), drag handles to adjust crop
-2. **Quick Crop**: Use modal operator (Shift+C) for single adjustments
 3. **Menu Access**: Strip menu > Transform > Crop options
 4. **Toolbar**: Click crop tool icons in VSE toolbar
+
+## Critical Technical Lessons Learned
+
+### Gizmo Cursor Behavior and Mouse Warping
+- **Problem**: Gizmo `use_grab_cursor=True` automatically restores cursor to drag start position after `exit()` method
+- **Solution**: Use `bpy.app.timers.register()` with 50ms delay to warp cursor after Blender's restoration
+- **Implementation**: Hide cursor with `cursor_modal_set('NONE')` during restoration, then warp and restore with `cursor_modal_restore()`
+- **Coordinate Conversion**: Must convert region coordinates to window coordinates: `window_x = region.x + screen_x`
+
+### Gizmo Multi-Layer Rotation System
+- **Critical Issue**: Gizmos have two separate rotation calculations that must match:
+  1. **Positioning Layer** (`refresh()` method): Where handles appear on screen
+  2. **Drawing Layer** (`_draw_handle_square()` method): How handle squares are rotated
+- **Problem**: Using different rotation sources causes visual mismatch with flipped strips
+- **Solution**: Drawing layer must extract rotation from gizmo's `matrix_basis` (set by positioning layer)
+- **Code**: `rotation_angle = self.matrix_basis.to_3x3().to_euler().z`
+
+### Strip Flip State Handling  
+- **Flip Compensation**: Already handled in `crop_core.py` geometry calculation - don't double-compensate
+- **Flip Detection**: Check `flip_x != flip_y` for single-axis flips (problematic cases)
+- **Geometry Source**: Both modal and gizmo use `get_strip_geometry_with_flip_support()` - ensures consistency
+
+### Menu Integration Best Practices
+- **Context Setting**: Use `self.layout.operator_context = 'INVOKE_REGION_PREVIEW'` for menu items
+- **Automatic Shortcuts**: Blender automatically adds keyboard shortcuts to menu items - don't manually format
+- **Modal vs Tool**: Menu items should call modal operators like native transforms, not switch tools
 
 ## Known Working Features
 - ✅ Gizmo tool activation and handle display
 - ✅ Real-time crop preview during drag operations
 - ✅ Handle positioning with rotation/flip support
-- ✅ Keyboard shortcuts and toolbar integration
-- ✅ Handle visual feedback (hover highlighting)
+- ✅ Keyboard shortcuts and toolbar integration  
+- ✅ Handle visual feedback (orange hover highlighting)
 - ✅ Proper tool registration and polling
 - ✅ Cross-compatibility with modal operator
 - ✅ Boundary constraint handling
-- ✅ Clean handle sizing (consistent 6px)
+- ✅ Consistent handle sizing (6px)
+- ✅ Deferred cursor warping to final handle position
+- ✅ Multi-layer rotation system with flip compensation
+- ✅ Menu integration with proper context handling
 
 ## Current Status
-The addon is functional with both gizmo and modal interfaces working. The gizmo system provides the primary user interface with persistent visual handles, while the modal operator serves as a backup/alternative workflow. All core cropping functionality is operational.
+The addon is fully functional with both gizmo and modal interfaces working correctly. The gizmo system provides the primary user interface with persistent visual handles and proper cursor targeting. The modal operator serves as a secondary interface accessible via menus and shortcuts. All rotation, flipping, and cursor behavior issues have been resolved.
