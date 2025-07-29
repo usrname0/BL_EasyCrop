@@ -121,7 +121,7 @@ def draw_crop_handles():
     hover_corner = _get_hovered_corner(screen_corners, screen_midpoints, mouse_x, mouse_y)
     
     # Draw corner and edge handles
-    _draw_crop_handles(screen_corners, screen_midpoints, active_corner, hover_corner, strip, active_color, hover_color, handle_color)
+    _draw_crop_handles(screen_corners, screen_midpoints, active_corner, hover_corner, strip, flip_x, flip_y, active_color, hover_color, handle_color)
 
 
 def _draw_crop_symbol(view2d, pivot_x, pivot_y, res_x, res_y):
@@ -204,13 +204,13 @@ def _get_hovered_corner(screen_corners, screen_midpoints, mouse_x, mouse_y):
     return -1
 
 
-def _draw_crop_handles(screen_corners, screen_midpoints, active_corner, hover_corner, strip, active_color, hover_color, handle_color):
+def _draw_crop_handles(screen_corners, screen_midpoints, active_corner, hover_corner, strip, flip_x, flip_y, active_color, hover_color, handle_color):
     """Draw the corner and edge handles"""
     shader = gpu.shader.from_builtin('UNIFORM_COLOR')
     
     all_handle_positions = screen_corners + screen_midpoints
     
-    # Get rotation angle for handle orientation
+    # Get rotation angle for handle orientation with flip compensation
     angle = 0
     if hasattr(strip, 'rotation_start'):
         angle = math.radians(strip.rotation_start)
@@ -218,6 +218,10 @@ def _draw_crop_handles(screen_corners, screen_midpoints, active_corner, hover_co
         angle = strip.rotation
     elif hasattr(strip, 'transform') and hasattr(strip.transform, 'rotation'):
         angle = strip.transform.rotation
+    
+    # Apply flip compensation - match crop_core.py logic
+    if flip_x != flip_y:  # XOR - if only one axis is flipped
+        angle = -angle
     
     for i, pos in enumerate(all_handle_positions):
         # Determine color based on state - consistent size like gizmo version

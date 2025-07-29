@@ -4,13 +4,14 @@ Operators package for BL Easy Crop
 This package contains all the crop-related operators and functionality.
 """
 
-from . import crop
-
 # Import the main classes and functions for external use
-from .crop import (
+from .crop_operators import (
     EASYCROP_OT_crop,
     EASYCROP_OT_select_and_crop, 
-    EASYCROP_OT_activate_tool,
+    EASYCROP_OT_activate_tool
+)
+
+from .crop_core import (
     is_strip_visible_at_frame,
     get_crop_state,
     set_crop_active,
@@ -18,7 +19,6 @@ from .crop import (
 )
 
 __all__ = [
-    'crop',
     'EASYCROP_OT_crop',
     'EASYCROP_OT_select_and_crop', 
     'EASYCROP_OT_activate_tool',

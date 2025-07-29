@@ -486,7 +486,7 @@ class EASYCROP_GT_crop_handle(Gizmo):
             x, y = position
             half_size = size / 2
             
-            # This is used during modal drawing - apply rotation like modal operator
+            # This is used during modal drawing - apply rotation with flip compensation like modal operator
             context = bpy.context
             strip = context.scene.sequence_editor.active_strip
             angle = 0
@@ -497,6 +497,25 @@ class EASYCROP_GT_crop_handle(Gizmo):
                     angle = strip.rotation
                 elif hasattr(strip, 'transform') and hasattr(strip.transform, 'rotation'):
                     angle = strip.transform.rotation
+                
+                # Apply flip compensation - match crop_core.py logic
+                # Check for flip states
+                flip_x = False
+                flip_y = False
+                
+                for attr_name in ['use_flip_x', 'flip_x', 'mirror_x']:
+                    if hasattr(strip, attr_name):
+                        flip_x = getattr(strip, attr_name)
+                        break
+                
+                for attr_name in ['use_flip_y', 'flip_y', 'mirror_y']:
+                    if hasattr(strip, attr_name):
+                        flip_y = getattr(strip, attr_name)
+                        break
+                
+                # Apply flip compensation
+                if flip_x != flip_y:  # XOR - if only one axis is flipped
+                    angle = -angle
             
             # Create rotated square vertices exactly like modal operator  
             if abs(angle) > 0.01:  # If strip is rotated
