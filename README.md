@@ -20,6 +20,11 @@ Quick breakdown of menu options, etc:
 - Works with all strip types that support cropping
 - Compatible with transform strips
 
+## Auto Installation
+![Auto Install 1](./examples/install1.png)
+
+![Auto Install 2](./examples/install2_auto.png)
+
 ## Manual Installation
 
 Download the latest [zip](https://github.com/usrname0/BL_EasyCrop/releases). Install it as a zip file like this:
