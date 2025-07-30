@@ -23,7 +23,8 @@ bl_info = {
 
 import bpy
 import os
-from bpy.types import Operator, WorkSpaceTool
+from pathlib import Path
+from bpy.types import WorkSpaceTool
 
 # Import operators with error handling
 try:
@@ -100,7 +101,8 @@ class EASYCROP_TOOL_crop_handles(WorkSpaceTool):
     bl_idname = "sequencer.crop_handles_tool"
     bl_label = "Crop"
     bl_description = "Crop strips using individual handle gizmos"
-    bl_icon = os.path.join(os.path.dirname(__file__), "icons", "crop")  # Use custom crop icon from icons folder
+    # Use pathlib for cross-platform compatibility (Blender 4.4+ extensions)
+    bl_icon = str(Path(__file__).parent / "icons" / "crop")
     bl_widget = "EASYCROP_GGT_crop_handles"
     
     # Keymap is handled by gizmos - no tool-level keymap needed

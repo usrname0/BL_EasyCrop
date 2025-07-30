@@ -9,7 +9,6 @@ import bpy
 import gpu
 import math
 from gpu_extras.batch import batch_for_shader
-from mathutils import Vector
 
 from .crop_core import (
     get_crop_state, get_draw_data, 
@@ -99,15 +98,16 @@ def draw_crop_handles():
         view_x = corner.x - res_x / 2
         view_y = corner.y - res_y / 2
         screen_co = view2d.view_to_region(view_x, view_y, clip=False)
-        screen_corners.append(Vector(screen_co))
+        screen_corners.append(screen_co)
     
     screen_midpoints = []
     for midpoint in edge_midpoints:
         view_x = midpoint.x - res_x / 2
         view_y = midpoint.y - res_y / 2
         screen_co = view2d.view_to_region(view_x, view_y, clip=False)
-        screen_midpoints.append(Vector(screen_co))
+        screen_midpoints.append(screen_co)
     
+    # No crop outline - clean handles-only approach
     
     # Draw crop symbol at center
     _draw_crop_symbol(view2d, pivot_x, pivot_y, res_x, res_y)
@@ -193,7 +193,7 @@ def _get_hovered_corner(screen_corners, screen_midpoints, mouse_x, mouse_y):
     threshold = 15  # Same threshold as modal operator
     
     for i, pos in enumerate(all_handle_positions):
-        distance = ((pos.x - mouse_x)**2 + (pos.y - mouse_y)**2)**0.5
+        distance = ((pos[0] - mouse_x)**2 + (pos[1] - mouse_y)**2)**0.5
         if distance <= threshold:
             return i
     return -1
@@ -246,8 +246,8 @@ def _draw_crop_handles(screen_corners, screen_midpoints, active_corner, hover_co
             # Rotate and translate
             vertices = []
             for x_rel, y_rel in corners_rel:
-                x = x_rel * cos_a - y_rel * sin_a + pos.x
-                y = x_rel * sin_a + y_rel * cos_a + pos.y
+                x = x_rel * cos_a - y_rel * sin_a + pos[0]
+                y = x_rel * sin_a + y_rel * cos_a + pos[1]
                 vertices.append((x, y))
             
             # Reorder vertices like gizmo version for proper triangle winding
@@ -255,10 +255,10 @@ def _draw_crop_handles(screen_corners, screen_midpoints, active_corner, hover_co
         else:
             # No rotation - draw regular square handle
             vertices = [
-                (pos.x - size, pos.y - size),
-                (pos.x + size, pos.y - size),
-                (pos.x - size, pos.y + size),
-                (pos.x + size, pos.y + size)
+                (pos[0] - size, pos[1] - size),
+                (pos[0] + size, pos[1] - size),
+                (pos[0] - size, pos[1] + size),
+                (pos[0] + size, pos[1] + size)
             ]
         
         indices = ((0, 1, 2), (2, 1, 3))
