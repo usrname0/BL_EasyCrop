@@ -232,60 +232,25 @@ def _draw_crop_handles(screen_corners, screen_midpoints, active_corner, hover_co
             # Normal - white but dimmer
             color = handle_color
         
-        # Create handle vertices - rotated to match strip
+        # Create handle vertices - using matrix-based rotation (like gizmos)
         if abs(angle) > 0.01:  # If strip is rotated
-            # Calculate handle rotation - use edge-based calculation for consistency
-            if i < 4:  # Corner handle - calculate from adjacent edges like edge handles do
-                # For corner handles, use the same edge-based approach as edge handles
-                # This ensures consistent rotation between corners and edges
-                corner_idx = i
-                # Get the two edges adjacent to this corner
-                prev_edge_idx = (corner_idx - 1) % 4
-                next_edge_idx = corner_idx
-                
-                # Calculate average angle of the two adjacent edges
-                prev_corner1 = prev_edge_idx
-                prev_corner2 = (prev_edge_idx + 1) % 4
-                next_corner1 = next_edge_idx  
-                next_corner2 = (next_edge_idx + 1) % 4
-                
-                prev_edge_vec = screen_corners[prev_corner2] - screen_corners[prev_corner1]
-                next_edge_vec = screen_corners[next_corner2] - screen_corners[next_corner1]
-                
-                prev_edge_angle = math.atan2(prev_edge_vec.y, prev_edge_vec.x)
-                next_edge_angle = math.atan2(next_edge_vec.y, next_edge_vec.x)
-                
-                # Use the average angle, or just use one of them for simplicity
-                handle_angle = next_edge_angle - math.pi / 2  # Perpendicular to edge like edge handles
-            else:  # Edge handle - align with edge direction (unchanged)
-                edge_idx = i - 4
-                corner1_idx = edge_idx
-                corner2_idx = (edge_idx + 1) % 4
-                
-                # Get edge angle in screen space
-                edge_vec = screen_corners[corner2_idx] - screen_corners[corner1_idx]
-                edge_angle = math.atan2(edge_vec.y, edge_vec.x)
-                handle_angle = edge_angle - math.pi / 2  # Perpendicular to edge
-            
-            # Create rotated square
-            cos_a = math.cos(handle_angle)
-            sin_a = math.sin(handle_angle)
+            # Use direct angle calculation like gizmo version
+            cos_a = math.cos(angle)
+            sin_a = math.sin(angle)
             
             # Define square corners relative to center
             corners_rel = [
-                Vector((-size, -size)),
-                Vector((size, -size)),
-                Vector((size, size)),
-                Vector((-size, size))
+                (-size, -size), (size, -size), (size, size), (-size, size)
             ]
             
             # Rotate and translate
             vertices = []
-            for corner_rel in corners_rel:
-                x = corner_rel.x * cos_a - corner_rel.y * sin_a + pos.x
-                y = corner_rel.x * sin_a + corner_rel.y * cos_a + pos.y
+            for x_rel, y_rel in corners_rel:
+                x = x_rel * cos_a - y_rel * sin_a + pos.x
+                y = x_rel * sin_a + y_rel * cos_a + pos.y
                 vertices.append((x, y))
             
+            # Reorder vertices like gizmo version for proper triangle winding
             vertices = [vertices[0], vertices[1], vertices[3], vertices[2]]
         else:
             # No rotation - draw regular square handle
