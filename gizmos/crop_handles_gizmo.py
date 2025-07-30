@@ -62,7 +62,6 @@ class EASYCROP_GT_crop_handle(Gizmo):
     
     def draw(self, context):
         """Draw the handle gizmo using built-in methods"""
-        print(f"🎨 DRAW called for {self.handle_type}[{self.handle_index}] highlight={self.is_highlight}")
         
         # Ensure gizmo is not hidden
         self.hide = False
@@ -90,16 +89,12 @@ class EASYCROP_GT_crop_handle(Gizmo):
                 # Corner and edge handles - use custom square drawing with highlight color
                 self._draw_handle_square(color, context)
                     
-            print(f"✅ Successfully drew {self.handle_type}[{self.handle_index}] handle with custom drawing")
                     
         except Exception as e:
-            print(f"❌ Custom drawing failed for {self.handle_type}[{self.handle_index}]: {e}")
-            import traceback
-            traceback.print_exc()
+            pass
     
     def draw_select(self, context, select_id):
         """Draw during selection/modal operations - keeps handles visible"""
-        print(f"🎨 DRAW_SELECT called for {self.handle_type}[{self.handle_index}]")
         self._draw_handle_common(context, during_modal=True)
     
     def _draw_handle_common(self, context, during_modal=False):
@@ -123,7 +118,6 @@ class EASYCROP_GT_crop_handle(Gizmo):
                 self._draw_handle_square(square_color, context)
                 
             except Exception as e:
-                print(f"Handle draw error: {e}")
                 # Fallback
                 color = (1.0, 1.0, 1.0, 0.7)
                 self._draw_handle_square(color, context)
@@ -191,7 +185,7 @@ class EASYCROP_GT_crop_handle(Gizmo):
             gpu.state.line_width_set(1.0)
             
         except Exception as e:
-            print(f"Crop symbol draw error: {e}")
+            pass
     
     def _draw_handle_square(self, color, context):
         """Draw a handle square (for corner and edge handles) with rotation - match modal operator exactly"""
@@ -246,7 +240,7 @@ class EASYCROP_GT_crop_handle(Gizmo):
             batch.draw(shader)
             
         except Exception as e:
-            print(f"Handle square draw error: {e}")
+            pass
     
     # Removed _get_strip_rotation method - now getting rotation directly like modal operator
     
@@ -260,38 +254,30 @@ class EASYCROP_GT_crop_handle(Gizmo):
         threshold = 25  # Generous threshold
         
         if distance <= threshold:
-            print(f"✅ Gizmo {self.handle_type}[{self.handle_index}] hit at distance {distance}")
             return self.select_id
         else:
             return -1
     
     def select(self, context, event):
         """Handle gizmo selection/click"""
-        print(f"🎯 GIZMO SELECT CALLED: {self.handle_type}[{self.handle_index}]")
         return True  # Allow selection
     
     def invoke(self, context, event):
         """Start handle dragging"""
-        print(f"🟢 GIZMO INVOKE CALLED: {self.handle_type}[{self.handle_index}] at screen pos ({event.mouse_region_x}, {event.mouse_region_y})")
-        print(f"   Event type: {event.type}, value: {event.value}")
-        print(f"   🎨 use_draw_select = {getattr(self, 'use_draw_select', 'NOT_SET')}")
         
         if self.handle_type == "center":
             # Center handle starts modal crop mode (like current single gizmo)
             try:
-                print("🎯 Center handle clicked - starting modal crop mode")
                 bpy.ops.sequencer.crop('INVOKE_DEFAULT')
                 return {'FINISHED'}
             except Exception as e:
-                print(f"❌ Failed to start modal crop: {e}")
+                pass
                 return {'CANCELLED'}
         else:
             # Start crop handle drag - store initial values like modal operator
-            print(f"🟡 Starting crop handle drag for {self.handle_type}[{self.handle_index}]")
             
             # CRITICAL: Store initial mouse position for delta calculation
             self.init_mouse_pos = (event.mouse_region_x, event.mouse_region_y)
-            print(f"📍 Initial mouse position: {self.init_mouse_pos}")
             
             # Mark drag as active to prevent gizmo repositioning
             EASYCROP_GGT_crop_handles._drag_active = True
@@ -301,28 +287,23 @@ class EASYCROP_GT_crop_handle(Gizmo):
                 if hasattr(context.space_data, 'show_gizmo'):
                     self._saved_gizmo_state = context.space_data.show_gizmo
                     context.space_data.show_gizmo = False
-                    print("🚫 Disabled transform gizmos during crop drag")
             except Exception as e:
-                print(f"⚠️ Could not disable transform gizmos: {e}")
+                pass
             
             # RE-ENABLE modal drawing handler to keep handles visible during drag
             try:
                 self._modal_draw_handler = bpy.types.SpaceSequenceEditor.draw_handler_add(
                     self._draw_handles_during_modal, (), 'PREVIEW', 'POST_PIXEL')
-                print("🎨 Added modal drawing handler for drag visibility")
             except Exception as e:
-                print(f"⚠️ Could not add modal drawing handler: {e}")
+                pass
             
             # Store initial crop values for this drag operation (like modal operator)
             strip = context.scene.sequence_editor.active_strip
             if strip and hasattr(strip, 'crop') and strip.crop:
                 self.crop_start = (strip.crop.min_x, strip.crop.max_x, strip.crop.min_y, strip.crop.max_y)
-                print(f"📝 Stored initial crop values: {self.crop_start}")
             else:
                 self.crop_start = (0, 0, 0, 0)
-                print("⚠️ No crop data found - using defaults")
                 
-            print("🔥 RETURNING RUNNING_MODAL - should start dragging")
             return {'RUNNING_MODAL'}
     
     def modal(self, context, event, tweak):
@@ -330,31 +311,24 @@ class EASYCROP_GT_crop_handle(Gizmo):
         if self.handle_type == "center":
             return {'FINISHED'}
         
-        print(f"🔄 GIZMO MODAL CALLED: {self.handle_type}[{self.handle_index}]")
-        print(f"   Event type: {event.type}, value: {event.value}")
-        print(f"   Mouse pos: ({event.mouse_region_x}, {event.mouse_region_y})")
         
         # Calculate delta from initial position - tweak object varies
         if hasattr(self, 'init_mouse_pos'):
             current_mouse = (event.mouse_region_x, event.mouse_region_y)
             delta = (current_mouse[0] - self.init_mouse_pos[0], current_mouse[1] - self.init_mouse_pos[1])
-            print(f"   Calculated delta: {delta}")
         else:
             # Fallback to zero delta if no initial position stored
             delta = (0, 0)
-            print(f"   No initial position - using zero delta")
         
         # CORRECT APPROACH: Update crop values, NOT gizmo position
         # The gizmos should stay put while the strip gets smaller/larger
         try:
             strip = context.scene.sequence_editor.active_strip
             if strip and hasattr(strip, 'crop'):
-                print(f"📊 Before crop update: min_x={strip.crop.min_x}, max_x={strip.crop.max_x}, min_y={strip.crop.min_y}, max_y={strip.crop.max_y}")
                 
                 # Update crop values (this will make the strip smaller/larger)
                 self._update_crop_from_gizmo_drag(context, delta, strip)
                 
-                print(f"📈 After crop update: min_x={strip.crop.min_x}, max_x={strip.crop.max_x}, min_y={strip.crop.min_y}, max_y={strip.crop.max_y}")
                 
                 # Force redraw to show the cropping effect
                 for area in context.screen.areas:
@@ -367,12 +341,9 @@ class EASYCROP_GT_crop_handle(Gizmo):
                 # This is the key difference from strip transform
                         
             else:
-                print("❌ No strip or crop data found in modal")
-                
+                pass
         except Exception as e:
-            print(f"❌ Gizmo crop update error: {e}")
-            import traceback
-            traceback.print_exc()
+            pass
         
         return {'RUNNING_MODAL'}
     
@@ -396,7 +367,7 @@ class EASYCROP_GT_crop_handle(Gizmo):
             self._draw_handles_with_gpu(context, active_strip, scene)
                 
         except Exception as e:
-            print(f"⚠️ Modal drawing error: {e}")
+            pass
     
     def _draw_handles_with_gpu(self, context, strip, scene):
         """Draw handles directly with GPU during modal operations"""
@@ -473,12 +444,9 @@ class EASYCROP_GT_crop_handle(Gizmo):
             if center_screen:
                 self._draw_crop_symbol_at_position(shader, center_screen, (1.0, 1.0, 1.0, 0.8))
             
-            print(f"🎨 Successfully drew {len(corners)} corner + {len(edge_midpoints)} edge + 1 center handles with GPU")
             
         except Exception as e:
-            print(f"⚠️ GPU drawing error: {e}")
-            import traceback
-            traceback.print_exc()
+            pass
     
     def _draw_square_at_position(self, shader, position, color, size):
         """Draw a square handle at the given screen position with rotation like modal operator"""
@@ -554,7 +522,7 @@ class EASYCROP_GT_crop_handle(Gizmo):
             batch.draw(shader)
             
         except Exception as e:
-            print(f"⚠️ Square drawing error: {e}")
+            pass
     
     def _draw_crop_symbol_at_position(self, shader, position, color):
         """Draw crop symbol at the given screen position - match normal gizmo version"""
@@ -615,13 +583,12 @@ class EASYCROP_GT_crop_handle(Gizmo):
             gpu.state.line_width_set(1.0)
             
         except Exception as e:
-            print(f"⚠️ Crop symbol drawing error: {e}")
+            pass
     
     
     def exit(self, context, cancel):
         """Handle gizmo exit"""
         if self.handle_type != "center":
-            print(f"🏁 Gizmo drag finished for {self.handle_type}[{self.handle_index}], cancelled: {cancel}")
             
             # Clear drag state to allow gizmo repositioning again
             EASYCROP_GGT_crop_handles._drag_active = False
@@ -670,9 +637,8 @@ class EASYCROP_GT_crop_handle(Gizmo):
                                         # Warp cursor to final position and restore cursor visibility
                                         bpy.context.window.cursor_warp(final_x, final_y)
                                         bpy.context.window.cursor_modal_restore()
-                                        print(f"🎯 Warped cursor to final handle position: ({final_x}, {final_y})")
                                     except Exception as e:
-                                        print(f"⚠️ Deferred cursor warp failed: {e}")
+                                        pass
                                     return None  # Don't repeat the timer
                                 
                                 # Hide cursor immediately to prevent seeing the snap-back
@@ -680,33 +646,29 @@ class EASYCROP_GT_crop_handle(Gizmo):
                                 
                                 # Schedule cursor warp to happen after Blender's restoration (50ms delay)
                                 bpy.app.timers.register(deferred_cursor_warp, first_interval=0.05)
-                                print(f"📅 Scheduled cursor warp to final handle position: ({final_x}, {final_y})")
                                 
                 except Exception as e:
-                    print(f"⚠️ Could not schedule deferred cursor warp: {e}")
+                    pass
             
             # Remove modal drawing handler
             try:
                 if hasattr(self, '_modal_draw_handler') and self._modal_draw_handler:
                     bpy.types.SpaceSequenceEditor.draw_handler_remove(self._modal_draw_handler, 'PREVIEW')
                     self._modal_draw_handler = None
-                    print("🎨 Removed modal drawing handler")
             except Exception as e:
-                print(f"⚠️ Could not remove modal drawing handler: {e}")
+                pass
             
             # Restore transform gizmos
             try:
                 if hasattr(self, '_saved_gizmo_state') and hasattr(context.space_data, 'show_gizmo'):
                     context.space_data.show_gizmo = self._saved_gizmo_state
-                    print("✅ Restored transform gizmos after crop drag")
             except Exception as e:
-                print(f"⚠️ Could not restore transform gizmos: {e}")
+                pass
             
             # If cancelled, restore original crop values (like modal operator ESC)
             if cancel and hasattr(self, 'crop_start'):
                 strip = context.scene.sequence_editor.active_strip
                 if strip and hasattr(strip, 'crop') and strip.crop:
-                    print(f"🔄 Restoring crop values: {self.crop_start}")
                     strip.crop.min_x = int(self.crop_start[0])
                     strip.crop.max_x = int(self.crop_start[1])
                     strip.crop.min_y = int(self.crop_start[2])
@@ -717,7 +679,7 @@ class EASYCROP_GT_crop_handle(Gizmo):
                         if area.type == 'SEQUENCE_EDITOR':
                             area.tag_redraw()
             else:
-                print("✅ Crop drag completed successfully")
+                pass
     
     def _update_crop_from_gizmo_drag(self, context, delta, strip):
         """Update crop values from gizmo drag (adapted from modal operator)"""
@@ -821,7 +783,6 @@ class EASYCROP_GT_crop_handle(Gizmo):
                 corner_remap = {0: 1, 1: 0, 2: 3, 3: 2}
                 corner_map = corner_remap[self.handle_index]
             
-            print(f"🔄 Corner remap: {self.handle_index} -> {corner_map} (flip_x={flip_x}, flip_y={flip_y})")
             
             # Apply crop changes based on remapped corner - using stored initial values
             if corner_map == 0:  # Bottom-left
@@ -876,7 +837,6 @@ class EASYCROP_GT_crop_handle(Gizmo):
                 edge_remap = {0: 0, 1: 3, 2: 2, 3: 1}
                 edge_map = edge_remap[edge_index]
             
-            print(f"🔄 Edge remap: {edge_index} -> {edge_map} (flip_x={flip_x}, flip_y={flip_y})")
             
             # Apply crop changes based on remapped edge - using stored initial values
             if edge_map == 0:  # Left edge
@@ -964,7 +924,7 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
                 pass
                 
         except Exception as e:
-            print(f"Tool detection error: {e}")
+            pass
         
         # Only show gizmos when explicitly activated via toolbar
         try:
@@ -980,7 +940,6 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
     
     def setup(self, context):
         """Setup the gizmo group with all handles"""
-        print("🔧 Setting up crop handles gizmo group...")
         
         # Create corner handles (4)
         for i in range(4):
@@ -996,7 +955,6 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
             gizmo.use_grab_cursor = True
             gizmo.use_draw_select = True  # Enable select drawing for visibility during modal
             
-            print(f"✓ Created corner handle {i} with type={gizmo.handle_type}, index={gizmo.handle_index}")
         
         # Create edge handles (4)  
         for i in range(4):
@@ -1012,7 +970,6 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
             gizmo.use_grab_cursor = True
             gizmo.use_draw_select = True  # Enable select drawing for visibility during modal
             
-            print(f"✓ Created edge handle {i} with type={gizmo.handle_type}, index={gizmo.handle_index}")
         
         # Create center handle (1)
         gizmo = self.gizmos.new(EASYCROP_GT_crop_handle.bl_idname)
@@ -1024,16 +981,13 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
         # Center handle needs click handling but not dragging
         gizmo.use_event_handle_all = True
         gizmo.use_draw_select = True  # Enable select drawing
-        print(f"✓ Created center handle with type={gizmo.handle_type}, index={gizmo.handle_index}")
         
-        print(f"🎯 Created {len(self.gizmos)} crop handle gizmos total")
     
     def refresh(self, context):
         """Refresh gizmo positions"""
         # CRITICAL: Don't reposition gizmos during active drag!
         # This prevents the "all gizmos move with strip" issue
         if self._drag_active:
-            print("🚫 Skipping gizmo refresh during drag")
             return
             
         scene = context.scene
@@ -1045,7 +999,6 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
             return
             
         try:
-            print("🔄 Refreshing gizmo positions (no drag active)")
             
             # Get strip geometry (same as modal operator)
             corners, (pivot_x, pivot_y), (scale_x, scale_y, flip_x, flip_y) = get_strip_geometry_with_flip_support(active_strip, scene)
@@ -1131,7 +1084,6 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
                         # CRITICAL: Force visibility
                         self.gizmos[i].hide = False
                         self.gizmos[i].alpha = 0.8
-                        print(f"📍 Corner {i}: view({screen_co[0]:.1f}, {screen_co[1]:.1f}) -> screen({screen_co[0]:.1f}, {screen_co[1]:.1f}) [geom_angle={math.degrees(rotation_angle):.1f}°, flip_x={flip_x}, flip_y={flip_y}]")
                 
                 # Position edge handles (4-7) with geometry-based rotation like modal operator
                 for i in range(4):
@@ -1193,7 +1145,6 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
                         # CRITICAL: Force visibility
                         self.gizmos[gizmo_idx].hide = False
                         self.gizmos[gizmo_idx].alpha = 0.8
-                        print(f"📍 Edge {i}: view({view_x:.1f}, {view_y:.1f}) -> screen({screen_co[0]:.1f}, {screen_co[1]:.1f}) [geom_angle={math.degrees(rotation_angle):.1f}°, flip_x={flip_x}, flip_y={flip_y}]")
                 
                 # Position center handle (8)
                 if len(self.gizmos) > 8:
@@ -1206,10 +1157,9 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
                     # CRITICAL: Force visibility
                     self.gizmos[8].hide = False
                     self.gizmos[8].alpha = 0.8
-                    print(f"📍 Center: view({view_x:.1f}, {view_y:.1f}) -> screen({screen_co[0]:.1f}, {screen_co[1]:.1f})")
             
         except Exception as e:
-            print(f"Handle gizmo refresh error: {e}")
+            pass
     
     def draw_prepare(self, context):
         """Prepare for drawing"""
@@ -1217,7 +1167,6 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
     
     def draw_select(self, context):
         """Draw during modal operations - ensure handles stay visible"""
-        print(f"🎨 GROUP DRAW_SELECT called for {len(self.gizmos)} gizmos")
         # Force all handles to draw during modal operations
         # This helps keep non-active handles visible during drag operations
         try:
@@ -1229,65 +1178,53 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
                     # Draw all handles manually during modal
                     self._draw_all_handles_manual(context, during_modal=True)
         except Exception as e:
-            print(f"Error drawing handles during modal: {e}")
+            pass
     
     def _draw_all_handles_manual(self, context, during_modal=False):
         """Manually draw all handles - fallback for modal operations"""
         try:
             for i, gizmo in enumerate(self.gizmos):
                 if hasattr(gizmo, '_draw_handle_common'):
-                    print(f"  🎨 Manually drawing gizmo {i} ({gizmo.handle_type}[{gizmo.handle_index}])")
                     gizmo._draw_handle_common(context, during_modal=during_modal)
         except Exception as e:
-            print(f"Manual draw error: {e}")
+            pass
 
 
 def register_crop_handles_gizmo():
     """Register the crop handles gizmo classes"""
     try:
-        print("=== REGISTERING CROP HANDLES GIZMO ===")
         
         bpy.utils.register_class(EASYCROP_GT_crop_handle)
-        print("✓ Registered EASYCROP_GT_crop_handle")
         
         bpy.utils.register_class(EASYCROP_GGT_crop_handles)
-        print("✓ Registered EASYCROP_GGT_crop_handles")
         
         # Ensure the gizmo group type is active
         try:
             wm = bpy.context.window_manager
             if hasattr(wm, 'gizmo_group_type_ensure'):
                 wm.gizmo_group_type_ensure(EASYCROP_GGT_crop_handles.bl_idname)
-                print("✓ gizmo_group_type_ensure() called successfully")
         except Exception as e:
+            pass
             # This error is expected for PERSISTENT gizmo groups
             if "PERSISTENT" in str(e):
-                print("ℹ PERSISTENT gizmo group registration - this is normal")
+                pass
             else:
-                print(f"ℹ gizmo_group_type_ensure() not needed: {e}")
+                pass
             
-        print("=== CROP HANDLES GIZMO REGISTRATION COMPLETE ===")
         return True
         
     except Exception as e:
-        print(f"Failed to register crop handles gizmo: {e}")
-        import traceback
-        traceback.print_exc()
         return False
 
 
 def unregister_crop_handles_gizmo():
     """Unregister the crop handles gizmo classes"""
     try:
-        print("=== UNREGISTERING CROP HANDLES GIZMO ===")
         
         bpy.utils.unregister_class(EASYCROP_GGT_crop_handles)
-        print("✓ Unregistered EASYCROP_GGT_crop_handles")
         
         bpy.utils.unregister_class(EASYCROP_GT_crop_handle)
-        print("✓ Unregistered EASYCROP_GT_crop_handle")
         
-        print("=== CROP HANDLES GIZMO UNREGISTRATION COMPLETE ===")
         
     except Exception as e:
-        print(f"Failed to unregister crop handles gizmo: {e}")
+        pass

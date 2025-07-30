@@ -108,11 +108,6 @@ def draw_crop_handles():
         screen_co = view2d.view_to_region(view_x, view_y, clip=False)
         screen_midpoints.append(Vector(screen_co))
     
-    # Draw crop outline
-    for i in range(4):
-        next_i = (i + 1) % 4
-        draw_line(screen_corners[i], screen_corners[next_i], 2, (0, 0, 0, 0.5))
-        draw_line(screen_corners[i], screen_corners[next_i], 1, line_color)
     
     # Draw crop symbol at center
     _draw_crop_symbol(view2d, pivot_x, pivot_y, res_x, res_y)

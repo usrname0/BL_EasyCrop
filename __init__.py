@@ -40,7 +40,6 @@ try:
     )
     operators_imported = True
 except ImportError as e:
-    print(f"BL Easy Crop: Import error: {e}")
     operators_imported = False
 
 # Import gizmos with error handling
@@ -53,7 +52,6 @@ try:
     )
     gizmos_imported = True
 except ImportError as e:
-    print(f"BL Easy Crop: Gizmo import error: {e}")
     gizmos_imported = False
 
 
@@ -170,7 +168,6 @@ addon_keymaps = []
 def register():
     """Register the addon"""
     if not operators_imported:
-        print("BL Easy Crop: Failed to import operators")
         return
     
     # Register classes
@@ -179,14 +176,15 @@ def register():
             try:
                 bpy.utils.register_class(cls)
             except Exception as e:
-                print(f"BL Easy Crop: Failed to register {cls.__name__}: {e}")
+                pass
     
     # Register gizmos
     if gizmos_imported:
         try:
             register_crop_handles_gizmo()
         except Exception as e:
-            print(f"BL Easy Crop: Failed to register gizmos: {e}")
+            pass
+            pass
     
     
     # Register keymaps - only in Preview area
@@ -208,11 +206,11 @@ def register():
     try:
         bpy.utils.register_tool(EASYCROP_TOOL_crop_handles, after={"builtin.transform"}, separator=False)
     except Exception as e:
-        print(f"BL Easy Crop: Tool placement failed: {e}")
+        pass
         try:
             bpy.utils.register_tool(EASYCROP_TOOL_crop_handles)
         except Exception as e2:
-            print(f"BL Easy Crop: Tool registration failed: {e2}")
+            pass
     
     # Add menu items
     try:
@@ -220,7 +218,7 @@ def register():
         bpy.types.SEQUENCER_MT_image_transform.append(menu_func_image_transform)
         bpy.types.SEQUENCER_MT_image_clear.append(menu_func_image_clear)
     except Exception as e:
-        print(f"BL Easy Crop: Menu integration failed: {e}")
+        pass
 
 
 def unregister():
@@ -247,7 +245,8 @@ def unregister():
         try:
             unregister_crop_handles_gizmo()
         except Exception as e:
-            print(f"BL Easy Crop: Failed to unregister gizmos: {e}")
+            pass
+            pass
     
     # Remove menu items
     try:
