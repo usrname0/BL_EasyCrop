@@ -11,8 +11,8 @@ This version includes:
 bl_info = {
     "name": "BL Easy Crop",
     "description": "Easy cropping tool for Blender's Video Sequence Editor",
-    "author": "Adapted from VSE Transform Tools",
-    "version": (1, 0, 2),
+    "author": "usrname0",
+    "version": (2, 0, 0),
     "blender": (4, 4, 0),
     "location": "Sequencer > Preview > Toolbar",
     "warning": "",
