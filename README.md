@@ -6,6 +6,8 @@ It can be accessed via the preview window toolbar, menus or keyboard shortcut (d
 
 Credit to the old https://github.com/doakey3/VSE_Transform_Tools for numerous bits of help while trying to get this thing to work.
 
+Also credit to nickberckley for gizmo tips and custom icon assistance https://github.com/nickberckley/bool_tool
+
  ![demo](./examples/easycrop-demo1.png)
 
 Quick breakdown of menu options, etc:
