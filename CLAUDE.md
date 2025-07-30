@@ -121,3 +121,66 @@ D:\Dev\BL_EasyCrop\BL_EasyCrop\
 
 ## Current Status
 The addon is fully functional with both gizmo and modal interfaces working correctly. The gizmo system provides the primary user interface with persistent visual handles and proper cursor targeting. The modal operator serves as a secondary interface accessible via menus and shortcuts. All rotation, flipping, and cursor behavior issues have been resolved.
+
+## Blender Development Notes
+
+### Core Lessons for Future Transform Tools
+
+**1. Start with Gizmos, Not Modal Operators**
+- Gizmos integrate naturally with Blender's transform system and toolbar
+- Users expect persistent handles they can see and interact with directly
+- Gizmo event handling is more robust for drag operations
+- Forces clean geometry calculations upfront
+- Matrix-based transformations from the start
+
+**2. Technical Architecture Patterns**
+- **Shared Core Functions**: Create geometry calculation functions (like `crop_core.py`) that both systems use
+- **Matrix-Based Rotation**: Use transformation matrices, not edge-vector calculations
+- **Consistent Handle Sizing**: 6px handles work well across different zoom levels
+- **Proper State Management**: Separate draw state from operator state
+
+**3. Critical Technical Issues & Solutions**
+
+**Gizmo Cursor Behavior:**
+- Problem: Gizmo `use_grab_cursor=True` automatically restores cursor after `exit()`
+- Solution: Use `bpy.app.timers.register()` with 50ms delay for cursor warping
+- Implementation: Hide cursor during restoration, then warp and restore
+- Coordinate conversion: `window_x = region.x + screen_x`
+
+**Multi-Layer Rotation System:**
+- Critical: Gizmos have positioning layer (`refresh()`) and drawing layer (`_draw_handle_square()`)
+- Both layers must use identical rotation calculations
+- Drawing layer extracts rotation from gizmo's `matrix_basis`: `rotation_angle = self.matrix_basis.to_3x3().to_euler().z`
+
+**Strip Flip State Handling:**
+- Flip compensation already handled in geometry calculations - don't double-compensate
+- Check `flip_x != flip_y` for problematic single-axis flips
+- Use consistent geometry source for both modal and gizmo systems
+
+**4. Development Workflow Recommendations**
+1. **Core Geometry First**: Build shared functions for strip geometry with flip support
+2. **Gizmo System**: Implement with proper matrix transformations
+3. **Modal Wrapper**: Lightweight operator reusing gizmo calculations
+4. **Visual Consistency**: Ensure both systems render identically
+5. **Extension Guidelines**: Follow Blender's extension guidelines from start
+
+**5. Blender Extension Guidelines Compliance**
+- Use `Path(__file__).parent` instead of `os.path.dirname(__file__)` for cross-platform paths
+- No network access without explicit permissions
+- Proper context access with None checking
+- Self-contained with no external dependencies
+- Use `__package__` for module identification
+
+**6. Code Quality Standards**
+- Matrix calculations over complex edge-vector approaches
+- Consistent error handling with try/except blocks
+- Platform-independent path construction
+- No hardcoded paths or module references
+- Clean separation of concerns between modules
+
+**7. User Experience Principles**
+- Primary interface: Gizmo tool with persistent handles
+- Secondary interface: Modal operator for keyboard shortcuts and menus
+- Visual feedback: Orange highlights for hover/active states
+- Consistent with native Blender transform tools
+- Proper tool registration and polling
