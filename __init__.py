@@ -12,7 +12,7 @@ bl_info = {
     "name": "BL Easy Crop",
     "description": "Easy cropping tool for Blender's Video Sequence Editor",
     "author": "usrname0",
-    "version": (2, 0, 0),
+    "version": (2, 0, 1),
     "blender": (4, 4, 0),
     "location": "Sequencer > Preview > Toolbar",
     "warning": "",

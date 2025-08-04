@@ -866,7 +866,7 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
     bl_label = "Crop Handles"
     bl_space_type = 'SEQUENCE_EDITOR'
     bl_region_type = 'PREVIEW'
-    bl_options = {'SHOW_MODAL_ALL', 'PERSISTENT', 'SCALE'}
+    bl_options = {'SHOW_MODAL_ALL', 'SCALE'}
     
     # Class variable to track if any gizmo is being dragged
     _drag_active = False
