@@ -18,7 +18,6 @@ Quick breakdown of menu options, etc:
 
 - Blender 4.4+
 - Works with all strip types that support cropping
-- Compatible with transform strips
 
 ## Auto Installation
 ![Auto Install 1](./examples/install1.png)
