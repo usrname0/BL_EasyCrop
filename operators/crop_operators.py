@@ -17,6 +17,16 @@ from .crop_core import (
 from .crop_drawing import draw_crop_handles
 
 
+def get_preview_keymap_name():
+    """Get the correct preview keymap name for the current Blender version."""
+    return "Preview" if bpy.app.version >= (4, 5, 0) else "SequencerPreview"
+
+
+def get_sequencer_keymap_name():
+    """Get the correct sequencer keymap name for the current Blender version."""
+    return "Video Sequence Editor" if bpy.app.version >= (4, 5, 0) else "Sequencer"
+
+
 class EASYCROP_OT_crop(bpy.types.Operator):
     """Crop strips in the preview window"""
     bl_idname = "sequencer.crop"
@@ -558,11 +568,11 @@ class EASYCROP_OT_crop(bpy.types.Operator):
         for kc in keyconfigs_to_check:
             keymaps_to_check = []
             
-            preview_km = kc.keymaps.find('SequencerPreview', space_type='SEQUENCE_EDITOR', region_type='WINDOW')
+            preview_km = kc.keymaps.find(get_preview_keymap_name(), space_type='SEQUENCE_EDITOR', region_type='WINDOW')
             if preview_km:
                 keymaps_to_check.append(preview_km)
             
-            sequencer_km = kc.keymaps.find('Sequencer', space_type='SEQUENCE_EDITOR', region_type='WINDOW')
+            sequencer_km = kc.keymaps.find(get_sequencer_keymap_name(), space_type='SEQUENCE_EDITOR', region_type='WINDOW')
             if sequencer_km:
                 keymaps_to_check.append(sequencer_km)
             
@@ -596,11 +606,11 @@ class EASYCROP_OT_crop(bpy.types.Operator):
         for kc in keyconfigs_to_check:
             keymaps_to_check = []
             
-            preview_km = kc.keymaps.find('SequencerPreview', space_type='SEQUENCE_EDITOR', region_type='WINDOW')
+            preview_km = kc.keymaps.find(get_preview_keymap_name(), space_type='SEQUENCE_EDITOR', region_type='WINDOW')
             if preview_km:
                 keymaps_to_check.append(preview_km)
             
-            sequencer_km = kc.keymaps.find('Sequencer', space_type='SEQUENCE_EDITOR', region_type='WINDOW')
+            sequencer_km = kc.keymaps.find(get_sequencer_keymap_name(), space_type='SEQUENCE_EDITOR', region_type='WINDOW')
             if sequencer_km:
                 keymaps_to_check.append(sequencer_km)
             

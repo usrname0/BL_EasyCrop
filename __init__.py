@@ -193,13 +193,14 @@ def register():
     wm = bpy.context.window_manager
     kc = wm.keyconfigs.addon
     if kc:
-        # Preview region keymaps only
-        km = kc.keymaps.new(name="SequencerPreview", space_type="SEQUENCE_EDITOR", region_type="WINDOW")
-        
+        # Preview region keymaps - try both old and new keymap names for compatibility
+        keymap_name = "Preview" if bpy.app.version >= (4, 5, 0) else "SequencerPreview"
+        km = kc.keymaps.new(name=keymap_name, space_type="SEQUENCE_EDITOR", region_type="WINDOW")
+
         # Crop operator - C key (modal for quick access, returns to previous tool)
         kmi = km.keymap_items.new("sequencer.crop", 'C', 'PRESS')
         addon_keymaps.append((km, kmi))
-        
+
         # Clear crop operator - Alt+C key
         kmi_clear = km.keymap_items.new("sequencer.clear_crop", 'C', 'PRESS', alt=True)
         addon_keymaps.append((km, kmi_clear))
