@@ -4,7 +4,7 @@
 # Blender Extension Manifest
 schema_version = "1.0.0"
 id = "BL_EasyCrop"
-version = "2.0.1"
+version = "2.0.2"
 
 name = "BL Easy Crop"
 tagline = "Use handles for easy cropping in the Blender VSE Preview window"
