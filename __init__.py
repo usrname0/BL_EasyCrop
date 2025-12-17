@@ -198,7 +198,7 @@ def register():
         km = kc.keymaps.new(name=keymap_name, space_type="SEQUENCE_EDITOR", region_type="WINDOW")
 
         # Crop operator - C key (modal for quick access, returns to previous tool)
-        kmi = km.keymap_items.new("sequencer.crop", 'C', 'PRESS')
+        kmi = km.keymap_items.new("sequencer.crop", 'C', 'PRESS', shift=True)
         addon_keymaps.append((km, kmi))
 
         # Clear crop operator - Alt+C key

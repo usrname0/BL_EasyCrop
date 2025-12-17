@@ -32,7 +32,7 @@ description = """A simplified cropping interface for the built-in crop in Blende
 Features:
 • Crop looks and behaves a bit more like the other transforms (rotate, resize, move, transform)
 • Click and drag handles to crop in the VSE Preview window
-• Select the crop tool via toolbar, menu or shortcut (default "C")
+• Select the crop tool via toolbar, menu or shortcut (default "Shift + C")
 • Respects user's custom-keybinds
 • Works with all strip types that support cropping
 """
