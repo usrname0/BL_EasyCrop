@@ -640,7 +640,7 @@ class EASYCROP_OT_crop(bpy.types.Operator):
         current_frame = scene.frame_current
         strips = []
         
-        for strip in scene.sequence_editor.sequences:
+        for strip in scene.sequence_editor.strips:
             if is_strip_visible_at_frame(strip, current_frame):
                 strips.append(strip)
         
@@ -749,7 +749,7 @@ class EASYCROP_OT_select_and_crop(bpy.types.Operator):
         current_frame = scene.frame_current
         strips = []
         
-        for strip in scene.sequence_editor.sequences:
+        for strip in scene.sequence_editor.strips:
             if is_strip_visible_at_frame(strip, current_frame):
                 strips.append(strip)
         
