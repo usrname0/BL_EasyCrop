@@ -1,46 +1,35 @@
 """
-BL Easy Crop - Clean, simple version
-
-This version includes:
-- Working menu integration with proper context handling
-- Simple toolbar tool (standard Blender behavior)
-- Proper keymap handling with Alt+C for clear crop
-- Respects user's custom transform keybindings
+BL Easy Crop - Crop interface for Blender's Video Sequence Editor
 """
 
 bl_info = {
     "name": "BL Easy Crop",
     "description": "Easy cropping tool for Blender's Video Sequence Editor",
     "author": "usrname0",
-    "version": (2, 0, 1),
+    "version": (2, 0, 3),
     "blender": (4, 4, 0),
     "location": "Sequencer > Preview > Toolbar",
     "warning": "",
-    "doc_url": "",
-    "tracker_url": "",
+    "doc_url": "https://github.com/usrname0/BL_EasyCrop#readme",
+    "tracker_url": "https://github.com/usrname0/BL_EasyCrop/issues",
     "category": "Sequencer"
 }
 
 import bpy
-import os
 from pathlib import Path
 from bpy.types import WorkSpaceTool
 
 # Import operators with error handling
 try:
-    from .operators.crop_operators import (
-        EASYCROP_OT_crop, 
-        EASYCROP_OT_select_and_crop, 
-        EASYCROP_OT_activate_tool
-    )
+    from .operators.crop_operators import EASYCROP_OT_crop
     from .operators.crop_core import (
         is_strip_visible_at_frame,
         get_crop_state,
-        set_crop_active,
-        clear_crop_state
+        clear_crop_state,
+        get_selected_strips
     )
     operators_imported = True
-except ImportError as e:
+except ImportError:
     operators_imported = False
 
 # Import gizmos with error handling
@@ -52,7 +41,7 @@ try:
         unregister_crop_handles_gizmo
     )
     gizmos_imported = True
-except ImportError as e:
+except ImportError:
     gizmos_imported = False
 
 
@@ -69,7 +58,7 @@ class EASYCROP_OT_clear_crop(bpy.types.Operator):
             return False
         
         # Check if any selected strips have crop capability
-        for strip in context.selected_sequences:
+        for strip in get_selected_strips(context):
             if hasattr(strip, 'crop'):
                 return True
         return False
@@ -77,7 +66,7 @@ class EASYCROP_OT_clear_crop(bpy.types.Operator):
     def execute(self, context):
         cleared_count = 0
         
-        for strip in context.selected_sequences:
+        for strip in get_selected_strips(context):
             if hasattr(strip, 'crop') and strip.crop:
                 # Reset all crop values to 0
                 strip.crop.min_x = 0
@@ -136,15 +125,8 @@ class EASYCROP_TOOL_crop_handles(WorkSpaceTool):
 
 
 # Menu functions
-def menu_func_strip_transform(self, context):
-    """Add Easy Crop to Strip > Transform menu"""
-    if context.space_data.view_type in {'PREVIEW', 'SEQUENCER_PREVIEW'}:
-        self.layout.operator_context = 'INVOKE_REGION_PREVIEW'
-        self.layout.operator("sequencer.crop", text="Crop")
-
-
-def menu_func_image_transform(self, context):
-    """Add Easy Crop to Image > Transform menu"""
+def menu_func_crop(self, context):
+    """Add Easy Crop to Strip/Image Transform menus."""
     if context.space_data.view_type in {'PREVIEW', 'SEQUENCER_PREVIEW'}:
         self.layout.operator_context = 'INVOKE_REGION_PREVIEW'
         self.layout.operator("sequencer.crop", text="Crop")
@@ -159,8 +141,6 @@ def menu_func_image_clear(self, context):
 # Registration
 classes = [
     EASYCROP_OT_crop,
-    EASYCROP_OT_select_and_crop,
-    EASYCROP_OT_activate_tool,
     EASYCROP_OT_clear_crop,
 ]
 
@@ -177,18 +157,16 @@ def register():
         if cls is not None:
             try:
                 bpy.utils.register_class(cls)
-            except Exception as e:
-                pass
-    
+            except Exception:
+                pass  # Expected on reload
+
     # Register gizmos
     if gizmos_imported:
         try:
             register_crop_handles_gizmo()
-        except Exception as e:
-            pass
-            pass
-    
-    
+        except Exception:
+            pass  # Expected on reload
+
     # Register keymaps - only in Preview area
     wm = bpy.context.window_manager
     kc = wm.keyconfigs.addon
@@ -197,31 +175,30 @@ def register():
         keymap_name = "Preview" if bpy.app.version >= (4, 5, 0) else "SequencerPreview"
         km = kc.keymaps.new(name=keymap_name, space_type="SEQUENCE_EDITOR", region_type="WINDOW")
 
-        # Crop operator - C key (modal for quick access, returns to previous tool)
-        kmi = km.keymap_items.new("sequencer.crop", 'C', 'PRESS')
+        # Crop operator - Shift+C key (modal for quick access, returns to previous tool)
+        kmi = km.keymap_items.new("sequencer.crop", 'C', 'PRESS', shift=True)
         addon_keymaps.append((km, kmi))
 
         # Clear crop operator - Alt+C key
         kmi_clear = km.keymap_items.new("sequencer.clear_crop", 'C', 'PRESS', alt=True)
         addon_keymaps.append((km, kmi_clear))
-    
+
     # Register the tools - only the gizmo handles tool
     try:
         bpy.utils.register_tool(EASYCROP_TOOL_crop_handles, after={"builtin.transform"}, separator=False)
-    except Exception as e:
-        pass
+    except Exception:
         try:
             bpy.utils.register_tool(EASYCROP_TOOL_crop_handles)
-        except Exception as e2:
-            pass
-    
+        except Exception:
+            print("BL EasyCrop: Failed to register toolbar tool")
+
     # Add menu items
     try:
-        bpy.types.SEQUENCER_MT_strip_transform.append(menu_func_strip_transform)
-        bpy.types.SEQUENCER_MT_image_transform.append(menu_func_image_transform)
+        bpy.types.SEQUENCER_MT_strip_transform.append(menu_func_crop)
+        bpy.types.SEQUENCER_MT_image_transform.append(menu_func_crop)
         bpy.types.SEQUENCER_MT_image_clear.append(menu_func_image_clear)
-    except Exception as e:
-        pass
+    except Exception:
+        print("BL EasyCrop: Failed to add menu items")
 
 
 def unregister():
@@ -229,7 +206,7 @@ def unregister():
     # Force cleanup of any active crop mode
     try:
         clear_crop_state()
-    except:
+    except Exception:
         pass
     
     # Force restore gizmos in case they were disabled
@@ -239,7 +216,7 @@ def unregister():
                 for space in area.spaces:
                     if space.type == 'SEQUENCE_EDITOR' and hasattr(space, 'show_gizmo'):
                         space.show_gizmo = True
-    except:
+    except Exception:
         pass
     
     
@@ -247,22 +224,21 @@ def unregister():
     if gizmos_imported:
         try:
             unregister_crop_handles_gizmo()
-        except Exception as e:
-            pass
+        except Exception:
             pass
     
     # Remove menu items
     try:
-        bpy.types.SEQUENCER_MT_strip_transform.remove(menu_func_strip_transform)
-        bpy.types.SEQUENCER_MT_image_transform.remove(menu_func_image_transform)
+        bpy.types.SEQUENCER_MT_strip_transform.remove(menu_func_crop)
+        bpy.types.SEQUENCER_MT_image_transform.remove(menu_func_crop)
         bpy.types.SEQUENCER_MT_image_clear.remove(menu_func_image_clear)
-    except:
+    except Exception:
         pass
     
     # Unregister the tools
     try:
         bpy.utils.unregister_tool(EASYCROP_TOOL_crop_handles)
-    except:
+    except Exception:
         pass
     
     # Clean up draw handlers
@@ -270,7 +246,7 @@ def unregister():
         from .operators.crop_core import get_draw_handle
         if get_draw_handle() is not None:
             bpy.types.SpaceSequenceEditor.draw_handler_remove(get_draw_handle(), 'PREVIEW')
-    except:
+    except Exception:
         pass
     
     # Remove keymaps
@@ -283,7 +259,7 @@ def unregister():
         if cls is not None:
             try:
                 bpy.utils.unregister_class(cls)
-            except:
+            except Exception:
                 pass
 
 
