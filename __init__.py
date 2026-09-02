@@ -2,18 +2,6 @@
 BL Easy Crop - Crop interface for Blender's Video Sequence Editor
 """
 
-bl_info = {
-    "name": "BL Easy Crop",
-    "description": "Easy cropping tool for Blender's Video Sequence Editor",
-    "author": "usrname0",
-    "version": (2, 0, 3),
-    "blender": (4, 4, 0),
-    "location": "Sequencer > Preview > Toolbar",
-    "warning": "",
-    "doc_url": "https://github.com/usrname0/BL_EasyCrop#readme",
-    "tracker_url": "https://github.com/usrname0/BL_EasyCrop/issues",
-    "category": "Sequencer"
-}
 
 import bpy
 from pathlib import Path
