@@ -307,8 +307,7 @@ def test_one_palette_for_every_handle():
     """
     import inspect
     from BL_EasyCrop.operators import crop_core, crop_drawing
-    from BL_EasyCrop.gizmos.crop_handles_gizmo import (
-        EASYCROP_GT_crop_handle, EASYCROP_GGT_crop_handles)
+    from BL_EasyCrop.gizmos.crop_handles_gizmo import EASYCROP_GT_crop_handle
 
     check("white handle alpha is 0.8", crop_core.HANDLE_COLOR, (1.0, 1.0, 1.0, 0.8))
     check("accent is opaque orange", crop_core.ACCENT_COLOR, (1.0, 0.5, 0.0, 1.0))
@@ -317,7 +316,6 @@ def test_one_palette_for_every_handle():
         "modal operator": inspect.getsource(crop_drawing.draw_crop_handles),
         "gizmo idle draw": inspect.getsource(EASYCROP_GT_crop_handle.draw),
         "gizmo drag draw": inspect.getsource(EASYCROP_GT_crop_handle._draw_handles_with_gpu),
-        "gizmo modal draw": inspect.getsource(EASYCROP_GT_crop_handle._draw_handle_common),
     }
     for label, src in sources.items():
         check(f"{label} uses the shared palette",

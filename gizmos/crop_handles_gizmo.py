@@ -62,18 +62,14 @@ class EASYCROP_GT_crop_handle(Gizmo):
         self.use_grab_cursor = True
 
         self.hide = False
-        self.alpha = 0.8
-        self.alpha_highlight = 1.0
 
-        self.color = (1.0, 1.0, 1.0)
-        self.color_highlight = (1.0, 0.5, 0.0)
+        # WARNING: do not set color, color_highlight, alpha or alpha_highlight
+        # here. They feed Blender's built-in gizmo drawing, and draw() replaces
+        # that entirely - wrecking all four to red at alpha 0.02 changed zero
+        # pixels on 4.4.3 through 5.2.1, against a control that moved 220000.
+        # The palette this class actually draws with is crop_core's.
 
         self.scale_basis = HANDLE_RADIUS
-
-    def draw_prepare(self, context: bpy.types.Context):
-        """Prepare for drawing - ensure gizmo is visible."""
-        self.hide = False
-        self.alpha = 0.8 if not self.is_highlight else 1.0
 
     def draw(self, context: bpy.types.Context):
         """Draw the handle gizmo."""
@@ -85,23 +81,6 @@ class EASYCROP_GT_crop_handle(Gizmo):
         if self.handle_type == "center":
             draw_crop_symbol_at(center_pos.x, center_pos.y, color)
         else:
-            rotation_angle = self.matrix_basis.to_3x3().to_euler().z
-            draw_rotated_square(center_pos.x, center_pos.y, HANDLE_RADIUS,
-                                rotation_angle, color)
-
-    def draw_select(self, context: bpy.types.Context, select_id: int):
-        """Draw during selection/modal operations - keeps handles visible."""
-        self._draw_handle_common(context, during_modal=True)
-
-    def _draw_handle_common(self, context: bpy.types.Context, during_modal: bool = False):
-        """Common drawing logic for both normal and modal states."""
-        center_pos = self.matrix_basis.translation
-
-        if self.handle_type == "center":
-            draw_crop_symbol_at(center_pos.x, center_pos.y, HANDLE_COLOR)
-        else:
-            color = ACCENT_COLOR if (self.is_highlight or during_modal) else HANDLE_COLOR
-
             rotation_angle = self.matrix_basis.to_3x3().to_euler().z
             draw_rotated_square(center_pos.x, center_pos.y, HANDLE_RADIUS,
                                 rotation_angle, color)
@@ -129,19 +108,6 @@ class EASYCROP_GT_crop_handle(Gizmo):
             return 0
         else:
             return -1
-
-    def select(self, context: bpy.types.Context, event: bpy.types.Event):
-        """Handle gizmo selection/click.
-
-        WARNING: this is probably not a callback at all. RNA declares
-        Gizmo.select as a bool property rather than a method, so defining it
-        here shadows that property, and `select` appears in none of Blender's
-        gizmo templates or bundled scripts. Nothing in this addon reads
-        Gizmo.select, so the shadowing is inert; whether Blender ever calls
-        this cannot be settled without a real UI session, which is why it is
-        still here.
-        """
-        return True
 
     def invoke(self, context: bpy.types.Context, event: bpy.types.Event):
         """Start handle dragging."""
@@ -463,11 +429,15 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
         self.gizmos[0..3] corners, [4..7] edges, [8] center, so nothing may be
         inserted or reordered here without changing it there too.
 
-        The use_* flags repeat what EASYCROP_GT_crop_handle.setup() already set
-        on each gizmo. Which of the two Blender consults has not been
-        established, so both are left in place. Note that the center handle
-        deliberately gets fewer: it never drags, so use_draw_modal and
-        use_grab_cursor would have nothing to govern.
+        WARNING: do not set use_event_handle_all, use_draw_modal or
+        use_grab_cursor here. gizmos.new() calls
+        EASYCROP_GT_crop_handle.setup(), which sets all three on every handle
+        before this method sees it - measured on 4.4.3 through 5.2.1, where
+        each of the nine reads (False, False, False) on entry to that setup()
+        and (True, True, True) on exit. A second copy here governs nothing,
+        and reading as though the center handle can be given fewer than the
+        other eight is what makes it worth avoiding: it cannot. The center
+        never drags, so all three are idle on it either way.
         """
         for i in range(4):
             gizmo = cast(EASYCROP_GT_crop_handle,
@@ -475,26 +445,16 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
             gizmo.handle_type = "corner"
             gizmo.handle_index = i
 
-            gizmo.use_event_handle_all = True
-            gizmo.use_draw_modal = True
-            gizmo.use_grab_cursor = True
-
         for i in range(4):
             gizmo = cast(EASYCROP_GT_crop_handle,
                          self.gizmos.new(EASYCROP_GT_crop_handle.bl_idname))
             gizmo.handle_type = "edge"
             gizmo.handle_index = i
 
-            gizmo.use_event_handle_all = True
-            gizmo.use_draw_modal = True
-            gizmo.use_grab_cursor = True
-
         gizmo = cast(EASYCROP_GT_crop_handle,
                      self.gizmos.new(EASYCROP_GT_crop_handle.bl_idname))
         gizmo.handle_type = "center"
         gizmo.handle_index = 0
-
-        gizmo.use_event_handle_all = True
 
     def refresh(self, context: bpy.types.Context):
         """Put each handle where the strip's current crop says it belongs."""
@@ -544,7 +504,6 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
 
             self.gizmos[i].matrix_basis = transform_matrix
             self.gizmos[i].hide = False
-            self.gizmos[i].alpha = 0.8
 
         # Position edge handles (4-7) - same one angle, for the same reason.
         for i in range(4):
@@ -556,13 +515,11 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
 
             self.gizmos[i + 4].matrix_basis = transform_matrix
             self.gizmos[i + 4].hide = False
-            self.gizmos[i + 4].alpha = 0.8
 
         # Position center handle (8)
         screen_co = res_to_screen(pivot_x, pivot_y, res_x, res_y, view2d)
         self.gizmos[8].matrix_basis = Matrix.Translation((screen_co[0], screen_co[1], 0))
         self.gizmos[8].hide = False
-        self.gizmos[8].alpha = 0.8
 
     def draw_prepare(self, context: bpy.types.Context):
         """Prepare for drawing."""
