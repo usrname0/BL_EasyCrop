@@ -64,10 +64,10 @@ class EASYCROP_GT_crop_handle(Gizmo):
         self.hide = False
 
         # WARNING: do not set color, color_highlight, alpha or alpha_highlight
-        # here. They feed Blender's built-in gizmo drawing, and draw() replaces
-        # that entirely - wrecking all four to red at alpha 0.02 changed zero
-        # pixels on 4.4.3 through 5.2.1, against a control that moved 220000.
-        # The palette this class actually draws with is crop_core's.
+        # here. They feed Blender's built-in gizmo drawing, which draw()
+        # replaces entirely, so they reach no pixel - measured inert on 4.4.3
+        # through 5.2.1. The palette this class draws with is crop_core's
+        # HANDLE_COLOR and ACCENT_COLOR.
 
         self.scale_basis = HANDLE_RADIUS
 
@@ -432,12 +432,9 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
         WARNING: do not set use_event_handle_all, use_draw_modal or
         use_grab_cursor here. gizmos.new() calls
         EASYCROP_GT_crop_handle.setup(), which sets all three on every handle
-        before this method sees it - measured on 4.4.3 through 5.2.1, where
-        each of the nine reads (False, False, False) on entry to that setup()
-        and (True, True, True) on exit. A second copy here governs nothing,
-        and reading as though the center handle can be given fewer than the
-        other eight is what makes it worth avoiding: it cannot. The center
-        never drags, so all three are idle on it either way.
+        before this method sees it, so a copy here governs nothing. Setting
+        them per handle also reads as though the center could be given fewer
+        than the other eight, and it cannot.
         """
         for i in range(4):
             gizmo = cast(EASYCROP_GT_crop_handle,
