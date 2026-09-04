@@ -7,7 +7,7 @@ import bpy
 from pathlib import Path
 from bpy.types import WorkSpaceTool
 
-from .operators.crop_operators import EASYCROP_OT_crop
+from .operators.crop_operators import EASYCROP_OT_crop, get_preview_keymap_name
 from .operators.crop_core import (
     is_strip_visible_at_frame,
     get_crop_state,
@@ -27,21 +27,21 @@ class EASYCROP_OT_clear_crop(bpy.types.Operator):
     bl_label = "Clear Crop"
     bl_description = "Clear crop from all selected strips"
     bl_options = {'REGISTER', 'UNDO'}
-    
+
     @classmethod
     def poll(cls, context):
         if not context.scene.sequence_editor:
             return False
-        
+
         # Check if any selected strips have crop capability
         for strip in get_selected_strips(context):
             if hasattr(strip, 'crop'):
                 return True
         return False
-    
+
     def execute(self, context):
         cleared_count = 0
-        
+
         for strip in get_selected_strips(context):
             if hasattr(strip, 'crop') and strip.crop:
                 # Reset all crop values to 0
@@ -50,41 +50,47 @@ class EASYCROP_OT_clear_crop(bpy.types.Operator):
                 strip.crop.min_y = 0
                 strip.crop.max_y = 0
                 cleared_count += 1
-        
+
         if cleared_count > 0:
             self.report({'INFO'}, f"Cleared crop from {cleared_count} strip(s)")
         else:
             self.report({'INFO'}, "No strips with crop found")
-        
+
         return {'FINISHED'}
 
 
 class EASYCROP_TOOL_crop_handles(WorkSpaceTool):
+    """The toolbar entry that turns the crop handles on.
+
+    Selecting it is the only way in: bl_keymap is None and nothing registers a
+    shortcut for it. The two shortcuts this addon does register, Shift+C and
+    Alt+C, both belong to the modal operator.
+    """
     bl_space_type = 'SEQUENCE_EDITOR'
     bl_context_mode = 'PREVIEW'
-    
+
     bl_idname = "sequencer.crop_handles_tool"
     bl_label = "Crop"
     bl_description = "Crop strips using individual handle gizmos"
-    # Use pathlib for cross-platform compatibility (Blender 4.4+ extensions)
+    # An absolute path with no suffix; Blender appends .dat itself.
     bl_icon = str(Path(__file__).parent / "icons" / "crop")
     bl_widget = "EASYCROP_GGT_crop_handles"
-    
-    # Keymap is handled by gizmos - no tool-level keymap needed
+
+    # The gizmos take their own events (use_event_handle_all), so there is
+    # nothing left for a tool-level keymap to do.
     bl_keymap = None
-    
-    @staticmethod  
+
+    @staticmethod
     def draw_settings(context, layout, tool):
-        # Handles tool status display
+        """Report in the tool header why handles are or are not showing."""
         seq_editor = context.scene.sequence_editor
         if not seq_editor:
             layout.label(text="No sequence editor")
             return
-            
+
         active_strip = seq_editor.active_strip
         current_frame = context.scene.frame_current
-        
-        # Show current state
+
         crop_state = get_crop_state()
         if crop_state['active']:
             layout.label(text="Modal crop mode active", icon='INFO')
@@ -144,8 +150,9 @@ def register():
         # The VSE preview keymap was renamed "SequencerPreview" -> "Preview" in
         # Blender 4.5. This addon supports 4.4, so both names are needed.
         # Measured: 4.4.3 has only "SequencerPreview", 4.5.3+ only "Preview".
-        keymap_name = "Preview" if bpy.app.version >= (4, 5, 0) else "SequencerPreview"
-        keymap = keyconfig.keymaps.new(name=keymap_name,
+        # The modal operator resolves the same name when it reads the user's
+        # keymap, so the rule lives in one place.
+        keymap = keyconfig.keymaps.new(name=get_preview_keymap_name(),
                                        space_type="SEQUENCE_EDITOR",
                                        region_type="WINDOW")
         addon_keymaps.append(
@@ -173,7 +180,7 @@ def unregister():
         for area in screen.areas:
             if area.type == 'SEQUENCE_EDITOR':
                 for space in area.spaces:
-                    if space.type == 'SEQUENCE_EDITOR' and hasattr(space, 'show_gizmo'):
+                    if space.type == 'SEQUENCE_EDITOR':
                         space.show_gizmo = True
 
     for menu_name, func in reversed(_MENUS):

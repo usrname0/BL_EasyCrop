@@ -1,11 +1,9 @@
 """
 BL Easy Crop - Drawing and visual rendering
 
-This module handles all the visual aspects of the crop interface,
-including drawing handles, crop outlines, and the crop symbol.
-
-Shared drawing functions (draw_crop_symbol_at, draw_rotated_square) are
-used by both the modal operator drawing and the gizmo system.
+Two primitives - a handle square and the center crop symbol - plus the modal
+operator's draw handler. The gizmo tool draws the same two primitives from
+gizmos.crop_handles_gizmo, so a handle looks the same under either interface.
 """
 
 import bpy
@@ -14,10 +12,10 @@ import math
 from gpu_extras.batch import batch_for_shader
 
 from .crop_core import (
-    get_crop_state, get_draw_data,
+    get_crop_state, get_draw_data, set_draw_data,
     get_strip_geometry_with_flip_support, get_strip_rotation,
     get_edge_midpoints, is_strip_visible_at_frame,
-    res_to_screen
+    res_to_screen, HANDLE_RADIUS, SELECT_RADIUS
 )
 
 
@@ -80,7 +78,7 @@ def draw_rotated_square(center_x, center_y, half_size, angle, color):
 
     Args:
         center_x, center_y: Screen position
-        half_size: Half the side length in pixels (6 = 12px square)
+        half_size: Half the side length in pixels (HANDLE_RADIUS)
         angle: Rotation angle in radians (already flip-compensated)
         color: RGBA tuple
     """
@@ -144,24 +142,22 @@ def draw_crop_handles():
     if not is_strip_visible_at_frame(strip, current_frame):
         return
 
-    # Get stored data
     draw_data = get_draw_data()
     if not draw_data:
-        from .crop_core import set_draw_data
-        set_draw_data({'active_corner': -1, 'frame_count': 0})
+        set_draw_data({'active_corner': -1})
         draw_data = get_draw_data()
 
+    # mouse_x/mouse_y are absent until the first MOUSEMOVE, so the hover test
+    # measures against the region origin for one frame.
     active_corner = draw_data.get('active_corner', -1)
     mouse_x = draw_data.get('mouse_x', 0)
     mouse_y = draw_data.get('mouse_y', 0)
 
-    # Colors
-    active_color = (1.0, 0.5, 0.0, 1.0)  # Orange for active/dragging
-    hover_color = (1.0, 0.5, 0.0, 1.0)   # Orange for hover
-    handle_color = (1.0, 1.0, 1.0, 0.7)  # White for normal
+    # Orange for the handle being dragged or hovered, white for the rest.
+    ACCENT_COLOR = (1.0, 0.5, 0.0, 1.0)
+    HANDLE_COLOR = (1.0, 1.0, 1.0, 0.7)
 
-    # Get current geometry
-    corners, (pivot_x, pivot_y), (scale_x, scale_y, flip_x, flip_y) = \
+    corners, (pivot_x, pivot_y), (_, _, flip_x, flip_y) = \
         get_strip_geometry_with_flip_support(strip, scene)
     edge_midpoints = get_edge_midpoints(corners)
 
@@ -173,7 +169,6 @@ def draw_crop_handles():
     res_x = scene.render.resolution_x
     res_y = scene.render.resolution_y
 
-    # Transform to screen coordinates
     screen_corners = [
         res_to_screen(c.x, c.y, res_x, res_y, view2d) for c in corners
     ]
@@ -181,39 +176,38 @@ def draw_crop_handles():
         res_to_screen(m.x, m.y, res_x, res_y, view2d) for m in edge_midpoints
     ]
 
-    # Draw crop symbol at center
     screen_center = res_to_screen(pivot_x, pivot_y, res_x, res_y, view2d)
     draw_crop_symbol_at(screen_center[0], screen_center[1])
 
-    # Detect hover for feedback
     hover_corner = _get_hovered_corner(screen_corners, screen_midpoints,
                                        mouse_x, mouse_y)
 
-    # Get rotation angle with flip compensation for handle drawing
+    # Mirroring one axis reverses which way the strip turns, so the squares
+    # tilt the other way too.
     angle = get_strip_rotation(strip)
     if flip_x != flip_y:
         angle = -angle
 
-    # Draw corner and edge handles
-    all_handle_positions = screen_corners + screen_midpoints
-    for i, pos in enumerate(all_handle_positions):
-        if i == active_corner:
-            color = active_color
-        elif i == hover_corner:
-            color = hover_color
-        else:
-            color = handle_color
-
-        draw_rotated_square(pos[0], pos[1], 6, angle, color)
+    # Corners 0-3 then edge midpoints 4-7, the numbering apply_crop_changes uses.
+    for i, pos in enumerate(screen_corners + screen_midpoints):
+        highlighted = i == active_corner or i == hover_corner
+        draw_rotated_square(pos[0], pos[1], HANDLE_RADIUS, angle,
+                            ACCENT_COLOR if highlighted else HANDLE_COLOR)
 
 
 def _get_hovered_corner(screen_corners, screen_midpoints, mouse_x, mouse_y):
-    """Detect which handle is being hovered over."""
-    all_handle_positions = screen_corners + screen_midpoints
-    threshold = 15
+    """The handle nearest the cursor within SELECT_RADIUS, or -1.
 
-    for i, pos in enumerate(all_handle_positions):
+    WARNING: this must agree with _get_corner_at_mouse on both the radius and
+    the nearest-wins rule. It decides which handle lights up; that one decides
+    which handle a click grabs. Any difference between them lights one handle
+    and moves another.
+    """
+    best, best_distance = -1, SELECT_RADIUS
+
+    for i, pos in enumerate(screen_corners + screen_midpoints):
         distance = math.hypot(pos[0] - mouse_x, pos[1] - mouse_y)
-        if distance <= threshold:
-            return i
-    return -1
+        if distance <= best_distance:
+            best, best_distance = i, distance
+
+    return best

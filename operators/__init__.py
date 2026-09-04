@@ -1,21 +1,8 @@
 """
 Operators package for BL Easy Crop
 
-This package contains all the crop-related operators and functionality.
+crop_core holds the shared geometry and state, crop_operators the modal
+operator, crop_drawing the primitives both interfaces draw with. Import from
+the modules directly - this package deliberately re-exports nothing, so there
+is only one name for each of them.
 """
-
-# Import the main classes and functions for external use
-from .crop_operators import EASYCROP_OT_crop
-
-from .crop_core import (
-    is_strip_visible_at_frame,
-    get_crop_state,
-    clear_crop_state
-)
-
-__all__ = [
-    'EASYCROP_OT_crop',
-    'is_strip_visible_at_frame',
-    'get_crop_state',
-    'clear_crop_state'
-]

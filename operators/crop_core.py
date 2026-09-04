@@ -1,8 +1,9 @@
 """
 BL Easy Crop - Core functionality and state management
 
-This module contains the core state variables, geometry calculations,
-and utility functions that other crop modules depend on.
+The one source of strip geometry and crop maths. Both interfaces - the gizmo
+tool and the modal operator - go through here, which is what stops them
+disagreeing about where a handle belongs on a flipped or rotated strip.
 """
 
 import bpy
@@ -12,10 +13,22 @@ from mathutils import Vector
 # Blender 5.0 renamed sequences -> strips throughout the API
 _USE_STRIPS_API = bpy.app.version >= (5, 0, 0)
 
-# Global state variables
-_draw_handle = None
-_draw_data = {}
-_crop_active = False
+# Region pixels. A handle is drawn small enough not to hide the corner it
+# marks, and grabbed from a good deal further out than it is drawn.
+#
+# WARNING: one grab radius, shared. The gizmo tool gets its highlight from the
+# same test_select that decides the grab, so the two cannot disagree there; the
+# modal operator hit-tests and highlights in Python, so it has to be held to the
+# same number by hand. A hover radius wider than the grab radius leaves a ring
+# where a handle is lit and a click misses it.
+HANDLE_RADIUS = 6.0
+SELECT_RADIUS = 25.0
+
+# The modal operator's session state, at module level because its draw handler
+# is a plain function that Blender calls with no reference to the operator.
+_draw_handle = None    # the PREVIEW draw handler, or None when not drawing
+_draw_data = {}        # what that handler needs: active_corner, mouse_x, mouse_y
+_crop_active = False   # a modal crop is running, so the gizmo tool stands down
 
 
 def get_strips(sequence_editor):
@@ -49,6 +62,10 @@ def point_in_polygon(point, polygon):
         if y > min(p1y, p2y):
             if y <= max(p1y, p2y):
                 if x <= max(p1x, p2x):
+                    # xinters looks possibly-unbound and is not: the tests above
+                    # require y > min(p1y, p2y) and y <= max(p1y, p2y), which no
+                    # y satisfies when p1y == p2y, so a horizontal edge never
+                    # reaches the read.
                     if p1y != p2y:
                         xinters = (y - p1y) * (p2x - p1x) / (p2y - p1y) + p1x
                     if p1x == p2x or x <= xinters:
@@ -78,36 +95,23 @@ def rotate_point(point, angle, origin=None):
 # --- Shared helper functions ---
 
 def get_strip_flip_state(strip):
-    """Get the flip/mirror state of a strip.
+    """Get the Mirror X / Mirror Y state of a strip.
 
     Returns:
         tuple: (flip_x, flip_y) booleans
     """
-    flip_x = False
-    flip_y = False
-
-    for attr_name in ['use_flip_x', 'flip_x', 'mirror_x']:
-        if hasattr(strip, attr_name):
-            flip_x = getattr(strip, attr_name)
-            break
-
-    for attr_name in ['use_flip_y', 'flip_y', 'mirror_y']:
-        if hasattr(strip, attr_name):
-            flip_y = getattr(strip, attr_name)
-            break
-
-    return flip_x, flip_y
+    return strip.use_flip_x, strip.use_flip_y
 
 
 def get_strip_rotation(strip):
-    """Get the rotation angle of a strip in radians (raw, without flip compensation)."""
-    if hasattr(strip, 'rotation_start'):
-        return math.radians(strip.rotation_start)
-    elif hasattr(strip, 'rotation'):
-        return strip.rotation
-    elif hasattr(strip, 'transform') and hasattr(strip.transform, 'rotation'):
-        return strip.transform.rotation
-    return 0.0
+    """Get the rotation angle of a strip in radians (raw, without flip compensation).
+
+    WARNING: strip.transform.rotation is the only source, and it is already in
+    radians. Do not add a fallback to a strip-level rotation attribute: the
+    obvious names are degrees elsewhere in Blender, and a wrongly converted
+    angle draws handles in confidently wrong places rather than raising.
+    """
+    return strip.transform.rotation
 
 
 def get_strip_dimensions(strip, scene):
@@ -155,15 +159,14 @@ def res_to_screen(point_x, point_y, res_x, res_y, view2d):
     Returns:
         tuple: (screen_x, screen_y) in region pixel coordinates
     """
+    # Resolution space has its origin at the bottom-left of the frame; the
+    # preview's View2D has its origin at the frame center.
     return view2d.view_to_region(
         point_x - res_x / 2, point_y - res_y / 2, clip=False)
 
 
 def compute_crop_delta(dx_pixels, dy_pixels, view2d, strip):
     """Convert a pixel-space drag delta into strip-image-space crop deltas.
-
-    Handles view2d scale conversion, inverse rotation compensation,
-    strip scale division, and flip sign compensation.
 
     Args:
         dx_pixels: Mouse drag delta X in pixels (screen space)
@@ -175,16 +178,19 @@ def compute_crop_delta(dx_pixels, dy_pixels, view2d, strip):
         tuple: (dx_res, dy_res, flip_x, flip_y) where dx_res/dy_res are
                deltas in strip image space, ready for apply_crop_changes().
     """
-    # Convert pixel delta to view-space via view2d scale
+    # Two points rather than one, so the view2d's zoom is measured rather than
+    # assumed - region_to_view is affine, not linear.
     p1 = view2d.region_to_view(0, 0)
     p2 = view2d.region_to_view(dx_pixels, dy_pixels)
     dx_view = p2[0] - p1[0]
     dy_view = p2[1] - p1[1]
 
-    # Get strip transform state
     flip_x, flip_y = get_strip_flip_state(strip)
 
-    # Inverse rotation compensation
+    # Undo the strip's own transform to get back to image space: rotate the
+    # delta the other way, then divide out the scale. Mirroring on one axis
+    # reverses which way the strip turns, so the inverse turns back the other
+    # way too.
     angle = -get_strip_rotation(strip)
     if flip_x != flip_y:
         angle = -angle
@@ -195,13 +201,10 @@ def compute_crop_delta(dx_pixels, dy_pixels, view2d, strip):
         dx_view, dy_view = (dx_view * cos_a - dy_view * sin_a,
                             dx_view * sin_a + dy_view * cos_a)
 
-    # Divide by strip scale
-    scale_x = strip.transform.scale_x if hasattr(strip, 'transform') and hasattr(strip.transform, 'scale_x') else 1.0
-    scale_y = strip.transform.scale_y if hasattr(strip, 'transform') and hasattr(strip.transform, 'scale_y') else 1.0
-    dx_res = dx_view / scale_x
-    dy_res = dy_view / scale_y
+    dx_res = dx_view / strip.transform.scale_x
+    dy_res = dy_view / strip.transform.scale_y
 
-    # Flip sign compensation
+    # On a mirrored axis, dragging right moves the image left.
     if flip_x:
         dx_res = -dx_res
     if flip_y:
@@ -222,9 +225,11 @@ def map_handle(handle_index, flip_x, flip_y):
     the handle drawn on the left edge of a flipped strip is the one that moves
     max_x. Corners and edges remap differently, hence the two tables.
 
-    Flip compensation happens exactly once, here - see ../DEV.md. Callers pass
-    the raw handle index and the strip's flip state, and get back an index into
-    the unflipped layout.
+    WARNING: flip compensation happens exactly once, and this is where. Callers
+    pass the raw handle index and the strip's flip state and get back an index
+    into the unflipped layout; compensating again in the drawing or gizmo layer
+    double-applies it, which lands the handles correctly when both axes are
+    flipped and wrongly when only one is.
 
     Args:
         handle_index: 0-3 for corners (BL, TL, TR, BR), 4-7 for edges
@@ -270,19 +275,17 @@ def autokey_crop(context, strip, handle_index, flip_x, flip_y):
 
     Auto-keying is not a property-level hook - it is something operators
     invoke - so writing strip.crop through RNA inserts nothing on its own, no
-    matter what the toggle says. Any drag that wants to honour the setting has
-    to key for itself. See ../BLENDER.md -> "Auto-key never fires on a plain
-    RNA write".
+    matter what the toggle says. Any drag that wants to honor the setting has
+    to key for itself.
 
     WARNING: read the flag from context.tool_settings, never from a scene
     looked up by hand. tool_settings is per-scene, the UI toggle writes the
     *window* scene's copy, and since 5.0 that need not be the scene the
     sequencer is showing. Reading the wrong one fails silently.
 
-    Only the channels the handle moved are keyed. Keying all four is the
-    tempting answer and is wrong: BL_PerspectiveTransform shipped that way and
-    reversed it, because dragging one handle silently committed channels the
-    user never touched, and they then had to be hunted down and deleted.
+    WARNING: key only the channels the handle moved. Keying all four is the
+    tempting simplification and it silently commits channels the user never
+    touched, which they then have to find and delete.
 
     Call this before ed.undo_push, so the keys land in the same undo step as
     the edit.
@@ -340,8 +343,7 @@ def apply_crop_changes(handle_index, strip, dx_res, dy_res, crop_base,
     every pixel of that invisible travel has to be dragged back before the edge
     moves again. Accumulating onto the last accepted value, and projecting
     rather than dropping the move, means the crop settles against the limit and
-    moves again on the first event heading back off it. See ../BLENDER.md ->
-    "A constrained drag must accumulate deltas".
+    moves again on the first event heading back off it.
 
     A crop that is already past the limit when the drag starts is the one case
     projection alone gets wrong, because clamping would snap it a long way on
@@ -418,6 +420,12 @@ def get_strip_geometry_with_flip_support(strip, scene):
     """Calculate strip geometry accounting for Mirror X/Y checkboxes.
 
     Returns corner positions in resolution space.
+
+    WARNING: the strip must be croppable. Every strip type with a crop also has
+    a transform, but a sound strip has neither, and guarding transform away
+    rather than filtering the caller gives such a strip the whole render
+    rectangle as its outline - a hit test that then matches every click in the
+    preview. Filter with hasattr(strip, 'crop') before calling.
     """
     res_x = scene.render.resolution_x
     res_y = scene.render.resolution_y
@@ -426,52 +434,36 @@ def get_strip_geometry_with_flip_support(strip, scene):
     flip_x, flip_y = get_strip_flip_state(strip)
     angle = get_strip_rotation(strip)
 
-    # Get scale and base transform
-    scale_x = 1.0
-    scale_y = 1.0
-    offset_x = 0
-    offset_y = 0
+    offset_x = strip.transform.offset_x
+    offset_y = strip.transform.offset_y
+    scale_x = strip.transform.scale_x
+    scale_y = strip.transform.scale_y
 
-    if hasattr(strip, 'transform'):
-        offset_x = strip.transform.offset_x
-        offset_y = strip.transform.offset_y
-        if hasattr(strip.transform, 'scale_x'):
-            scale_x = strip.transform.scale_x
-            scale_y = strip.transform.scale_y
+    crop_left = float(strip.crop.min_x)
+    crop_right = float(strip.crop.max_x)
+    crop_bottom = float(strip.crop.min_y)
+    crop_top = float(strip.crop.max_y)
 
-    # Get crop values
-    crop_left = 0
-    crop_right = 0
-    crop_bottom = 0
-    crop_top = 0
-
-    if hasattr(strip, 'crop'):
-        crop_left = float(strip.crop.min_x)
-        crop_right = float(strip.crop.max_x)
-        crop_bottom = float(strip.crop.min_y)
-        crop_top = float(strip.crop.max_y)
-
-    # Calculate scaled dimensions
     scaled_width = strip_width * scale_x
     scaled_height = strip_height * scale_y
 
-    # Calculate position (centered by default, then offset)
+    # A strip sits centered in the frame, then moves by its offset.
     left = (res_x - scaled_width) / 2 + offset_x
     right = (res_x + scaled_width) / 2 + offset_x
     bottom = (res_y - scaled_height) / 2 + offset_y
     top = (res_y + scaled_height) / 2 + offset_y
 
-    # Apply crop - crop values are in original image space, so scale them
+    # Crop is stored in original image pixels, so it scales with the strip.
     left += crop_left * scale_x
     right -= crop_right * scale_x
     bottom += crop_bottom * scale_y
     top -= crop_top * scale_y
 
-    # Calculate pivot point for rotation
     pivot_x = res_x / 2 + offset_x
     pivot_y = res_y / 2 + offset_y
 
-    # Handle flipped coordinates
+    # Mirroring reflects the strip about the frame's center line, and takes the
+    # rotation pivot with it.
     if flip_x:
         new_left = res_x - right
         new_right = res_x - left
@@ -486,7 +478,7 @@ def get_strip_geometry_with_flip_support(strip, scene):
         top = new_top
         pivot_y = res_y - pivot_y
 
-    # Create corner vectors
+    # BL, TL, TR, BR - the order every handle index in this module assumes.
     corners = [
         Vector((left, bottom)),  # Bottom-left
         Vector((left, top)),     # Top-left
@@ -494,9 +486,8 @@ def get_strip_geometry_with_flip_support(strip, scene):
         Vector((right, bottom))  # Bottom-right
     ]
 
-    # Apply rotation if needed
     if angle != 0:
-        # When flipped, rotation direction is reversed
+        # Mirroring one axis reverses which way the strip turns.
         if flip_x != flip_y:
             angle = -angle
 
@@ -509,13 +500,13 @@ def get_strip_geometry_with_flip_support(strip, scene):
 # --- State management functions ---
 
 def get_crop_state():
-    """Get the current crop state."""
-    global _crop_active, _draw_data, _draw_handle
-    return {
-        'active': _crop_active,
-        'draw_data': _draw_data.copy(),
-        'has_handler': _draw_handle is not None
-    }
+    """Whether a modal crop is running.
+
+    The gizmo tool's poll() and its draw handler both stand down while one is,
+    so this is read on every redraw - keep it cheap.
+    """
+    global _crop_active
+    return {'active': _crop_active}
 
 
 def set_crop_active(active):

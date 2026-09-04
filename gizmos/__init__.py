@@ -1,7 +1,9 @@
 """
 BL Easy Crop - Gizmos Module
 
-This module contains all gizmo implementations for the crop functionality.
+The crop handle gizmos, and the register/unregister pair the top-level
+__init__ calls. Gizmo classes are registered here rather than in the main
+class list because a GizmoGroup has to be registered after the Gizmo it holds.
 """
 
 from .crop_handles_gizmo import (
@@ -11,7 +13,6 @@ from .crop_handles_gizmo import (
     unregister_crop_handles_gizmo
 )
 
-# Export everything needed by the main __init__.py
 __all__ = [
     'EASYCROP_GT_crop_handle',
     'EASYCROP_GGT_crop_handles',

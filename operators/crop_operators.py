@@ -1,7 +1,12 @@
 """
 BL Easy Crop - Operators
 
-This module contains the main crop modal operator.
+The secondary crop interface: a modal operator on Shift+C and in the Strip >
+Transform menu, which draws handles for the duration of the operation and then
+gets out of the way. The gizmo tool's center symbol hands over to it.
+
+Unlike the gizmo, this carries bl_options {'REGISTER', 'UNDO'}, so Blender
+pushes the undo step and only the auto-keying is done by hand.
 """
 
 import bpy
@@ -13,7 +18,8 @@ from .crop_core import (
     get_strip_geometry_with_flip_support, is_strip_visible_at_frame, point_in_polygon,
     get_strips, get_selected_strips,
     get_strip_dimensions, get_edge_midpoints, get_strip_flip_state,
-    res_to_screen, compute_crop_delta, apply_crop_changes, autokey_crop
+    res_to_screen, compute_crop_delta, apply_crop_changes, autokey_crop,
+    SELECT_RADIUS
 )
 from .crop_drawing import draw_crop_handles
 
@@ -76,7 +82,7 @@ class EASYCROP_OT_crop(bpy.types.Operator):
 
             clicked_strip = None
             for s in strips:
-                if hasattr(s, 'crop') and self._is_mouse_over_strip(context, s, mouse_pos):
+                if self._is_mouse_over_strip(context, s, mouse_pos):
                     clicked_strip = s
                     break
 
@@ -107,20 +113,21 @@ class EASYCROP_OT_crop(bpy.types.Operator):
 
         # Store the current transform overlay state
         self.prev_show_gizmo = None
-        if hasattr(context.space_data, 'show_gizmo'):
+        if context.space_data:
             self.prev_show_gizmo = context.space_data.show_gizmo
             context.space_data.show_gizmo = False
 
-        # Clean up any existing handler
+        # Clean up any existing handler. ValueError means it was already
+        # removed by whichever path tore the last crop session down.
         if get_draw_handle() is not None:
             try:
                 bpy.types.SpaceSequenceEditor.draw_handler_remove(get_draw_handle(), 'PREVIEW')
-            except Exception:
+            except ValueError:
                 pass
             set_draw_handle(None)
 
         set_crop_active(True)
-        set_draw_data({'active_corner': -1, 'frame_count': 0})
+        set_draw_data({'active_corner': -1})
 
         # Store initial crop values
         if strip and hasattr(strip, 'crop') and strip.crop:
@@ -194,8 +201,7 @@ class EASYCROP_OT_crop(bpy.types.Operator):
                         bpy.ops.sequencer.select_all(action='DESELECT')
                     clicked_strip.select = True
                     context.scene.sequence_editor.active_strip = clicked_strip
-                    if hasattr(clicked_strip, 'crop'):
-                        bpy.ops.sequencer.crop('INVOKE_DEFAULT')
+                    bpy.ops.sequencer.crop('INVOKE_DEFAULT')
                     return {'FINISHED'}
                 else:
                     return self.finish(context)
@@ -258,24 +264,30 @@ class EASYCROP_OT_crop(bpy.types.Operator):
         return {'RUNNING_MODAL'}
 
     def finish(self, context, cancelled=False):
-        """Clean up and exit."""
+        """Take down the draw handler, the timer and the overlay state.
+
+        Reachable from modal(), from cancel(), and from the branch that hands
+        over to a click on another strip, so everything it removes is checked
+        for having gone already.
+        """
         set_crop_active(False)
 
-        if hasattr(self, 'prev_show_gizmo') and self.prev_show_gizmo is not None \
-                and hasattr(context.space_data, 'show_gizmo'):
+        # None means invoke() found no show_gizmo to save, which is not the same
+        # as having saved False.
+        if self.prev_show_gizmo is not None and context.space_data:
             context.space_data.show_gizmo = self.prev_show_gizmo
 
-        if hasattr(self, 'timer') and self.timer:
+        if self.timer:
             try:
                 context.window_manager.event_timer_remove(self.timer)
-            except Exception:
+            except ValueError:
                 pass
             self.timer = None
 
         if get_draw_handle() is not None:
             try:
                 bpy.types.SpaceSequenceEditor.draw_handler_remove(get_draw_handle(), 'PREVIEW')
-            except Exception:
+            except ValueError:
                 pass
             set_draw_handle(None)
 
@@ -291,19 +303,23 @@ class EASYCROP_OT_crop(bpy.types.Operator):
         return {'CANCELLED'} if cancelled else {'FINISHED'}
 
     def _get_corner_at_mouse(self, context, event):
-        """Check if mouse is over a corner or edge handle."""
+        """The handle nearest the cursor within SELECT_RADIUS, or -1.
+
+        Nearest rather than first: at a grab radius of 25px the corners and the
+        edge midpoints of a crop rect narrower than 100px on screen sit inside
+        each other's radius, and taking the first match would hand every such
+        click to a corner whatever the user aimed at.
+        """
         mouse_pos = Vector((event.mouse_region_x, event.mouse_region_y))
         corners, midpoints = self._get_crop_corners(context)
 
-        for i, corner in enumerate(corners):
-            if (corner - mouse_pos).length < 10:
-                return i
+        best, best_distance = -1, SELECT_RADIUS
+        for i, pos in enumerate(list(corners) + list(midpoints)):
+            distance = (pos - mouse_pos).length
+            if distance <= best_distance:
+                best, best_distance = i, distance
 
-        for i, midpoint in enumerate(midpoints):
-            if (midpoint - mouse_pos).length < 10:
-                return i + 4
-
-        return -1
+        return best
 
     def _get_crop_corners(self, context):
         """Get the corner and edge midpoint positions in screen space."""
@@ -331,7 +347,7 @@ class EASYCROP_OT_crop(bpy.types.Operator):
         return screen_corners, screen_midpoints
 
     def cancel(self, context):
-        """Called when operator is cancelled by Blender."""
+        """Called when operator is canceled by Blender."""
         return self.finish(context, cancelled=True)
 
     def _autokey_if_changed(self, context, strip):
@@ -344,8 +360,7 @@ class EASYCROP_OT_crop(bpy.types.Operator):
         modal finishes, so the keys inserted here land inside it.
 
         Why it is needed at all: writing strip.crop through RNA never triggers
-        auto-keying, whatever the toggle says. See ../BLENDER.md -> "Auto-key
-        never fires on a plain RNA write".
+        auto-keying, whatever the toggle says.
         """
         if self.active_corner < 0:
             return
@@ -372,8 +387,7 @@ class EASYCROP_OT_crop(bpy.types.Operator):
         # onto the last accepted crop is what stops a crop held against a limit
         # from stranding the cursor out in the disallowed region, with every
         # pixel of that invisible travel to be dragged back before the edge
-        # moves again. See ../BLENDER.md -> "A constrained drag must accumulate
-        # deltas", and apply_crop_changes.
+        # moves again. apply_crop_changes has the rest of the contract.
         dx = event.mouse_region_x - self.mouse_last[0]
         dy = event.mouse_region_y - self.mouse_last[1]
         self.mouse_last = (event.mouse_region_x, event.mouse_region_y)
@@ -424,7 +438,15 @@ class EASYCROP_OT_crop(bpy.types.Operator):
         return None
 
     def _get_visible_strips(self, context):
-        """Get all strips visible at the current frame, sorted top to bottom."""
+        """Croppable strips visible at the current frame, sorted top to bottom.
+
+        WARNING: the crop filter is load-bearing, not tidiness. A strip with no
+        crop also has no transform, and get_strip_geometry_with_flip_support
+        then falls back to offset 0 and scale 1 - the whole render rectangle -
+        so an unfiltered strip matches a click anywhere in the preview. A sound
+        strip on a higher channel than the one being cropped would swallow every
+        click-through test and end the crop, with nothing to report.
+        """
         scene = context.scene
         if not scene.sequence_editor:
             return []
@@ -433,7 +455,7 @@ class EASYCROP_OT_crop(bpy.types.Operator):
         strips = []
 
         for strip in get_strips(scene.sequence_editor):
-            if is_strip_visible_at_frame(strip, current_frame):
+            if hasattr(strip, 'crop') and is_strip_visible_at_frame(strip, current_frame):
                 strips.append(strip)
 
         strips.sort(key=lambda s: s.channel, reverse=True)
