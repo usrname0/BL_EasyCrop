@@ -210,6 +210,94 @@ def compute_crop_delta(dx_pixels, dy_pixels, view2d, strip):
     return dx_res, dy_res, flip_x, flip_y
 
 
+# strip.crop property names, in the order the (min_x, max_x, min_y, max_y)
+# tuples used throughout this module are laid out.
+CROP_PROPS = ("min_x", "max_x", "min_y", "max_y")
+
+
+def map_handle(handle_index, flip_x, flip_y):
+    """Resolve a handle index to the one it addresses on a flipped strip.
+
+    Mirroring a strip swaps which crop field a given on-screen handle drives:
+    the handle drawn on the left edge of a flipped strip is the one that moves
+    max_x. Corners and edges remap differently, hence the two tables.
+
+    Flip compensation happens exactly once, here - see ../DEV.md. Callers pass
+    the raw handle index and the strip's flip state, and get back an index into
+    the unflipped layout.
+
+    Args:
+        handle_index: 0-3 for corners (BL, TL, TR, BR), 4-7 for edges
+            (left, top, right, bottom)
+        flip_x: Whether strip is flipped on X axis
+        flip_y: Whether strip is flipped on Y axis
+
+    Returns:
+        int: the equivalent handle index with flips resolved
+    """
+    if handle_index < 4:
+        if flip_x and flip_y:
+            return {0: 2, 1: 3, 2: 0, 3: 1}[handle_index]
+        if flip_x:
+            return {0: 3, 1: 2, 2: 1, 3: 0}[handle_index]
+        if flip_y:
+            return {0: 1, 1: 0, 2: 3, 3: 2}[handle_index]
+        return handle_index
+
+    edge_index = handle_index - 4
+    if flip_x and flip_y:
+        edge_index = {0: 2, 1: 3, 2: 0, 3: 1}[edge_index]
+    elif flip_x:
+        edge_index = {0: 2, 1: 1, 2: 0, 3: 3}[edge_index]
+    elif flip_y:
+        edge_index = {0: 0, 1: 3, 2: 2, 3: 1}[edge_index]
+    return edge_index + 4
+
+
+def crop_props_for_handle(handle_index, flip_x, flip_y):
+    """The strip.crop property names a handle actually moves.
+
+    A corner moves two, an edge moves one. Used to key only what the drag
+    touched - see autokey_crop.
+    """
+    x_move, y_move = _HANDLE_FIELDS[map_handle(handle_index, flip_x, flip_y)]
+    return tuple(CROP_PROPS[move[0]] for move in (x_move, y_move)
+                 if move is not None)
+
+
+def autokey_crop(context, strip, handle_index, flip_x, flip_y):
+    """Insert keyframes for the crop channels this drag moved, if auto-key is on.
+
+    Auto-keying is not a property-level hook - it is something operators
+    invoke - so writing strip.crop through RNA inserts nothing on its own, no
+    matter what the toggle says. Any drag that wants to honour the setting has
+    to key for itself. See ../BLENDER.md -> "Auto-key never fires on a plain
+    RNA write".
+
+    WARNING: read the flag from context.tool_settings, never from a scene
+    looked up by hand. tool_settings is per-scene, the UI toggle writes the
+    *window* scene's copy, and since 5.0 that need not be the scene the
+    sequencer is showing. Reading the wrong one fails silently.
+
+    Only the channels the handle moved are keyed. Keying all four is the
+    tempting answer and is wrong: BL_PerspectiveTransform shipped that way and
+    reversed it, because dragging one handle silently committed channels the
+    user never touched, and they then had to be hunted down and deleted.
+
+    Call this before ed.undo_push, so the keys land in the same undo step as
+    the edit.
+    """
+    tool_settings = getattr(context, "tool_settings", None)
+    if tool_settings is None or not tool_settings.use_keyframe_insert_auto:
+        return ()
+
+    frame = context.scene.frame_current
+    keyed = crop_props_for_handle(handle_index, flip_x, flip_y)
+    for prop in keyed:
+        strip.crop.keyframe_insert(prop, frame=frame, group="Crop")
+    return keyed
+
+
 # Which crop field each handle moves, and in which direction.
 #
 # Fields are indexed into the (min_x, max_x, min_y, max_y) tuple used
@@ -283,28 +371,7 @@ def apply_crop_changes(handle_index, strip, dx_res, dy_res, crop_base,
     Returns:
         tuple: the accepted (min_x, max_x, min_y, max_y), as floats.
     """
-    if handle_index < 4:
-        # Corner handles - remap based on flips
-        mapped = handle_index
-        if flip_x and flip_y:
-            mapped = {0: 2, 1: 3, 2: 0, 3: 1}[handle_index]
-        elif flip_x:
-            mapped = {0: 3, 1: 2, 2: 1, 3: 0}[handle_index]
-        elif flip_y:
-            mapped = {0: 1, 1: 0, 2: 3, 3: 2}[handle_index]
-    else:
-        # Edge handles - remap based on flips
-        edge_index = handle_index - 4
-        edge_map = edge_index
-        if flip_x and flip_y:
-            edge_map = {0: 2, 1: 3, 2: 0, 3: 1}[edge_index]
-        elif flip_x:
-            edge_map = {0: 2, 1: 1, 2: 0, 3: 3}[edge_index]
-        elif flip_y:
-            edge_map = {0: 0, 1: 3, 2: 2, 3: 1}[edge_index]
-        mapped = edge_map + 4
-
-    x_move, y_move = _HANDLE_FIELDS[mapped]
+    x_move, y_move = _HANDLE_FIELDS[map_handle(handle_index, flip_x, flip_y)]
     accepted = list(crop_base)
 
     for move, delta, extent in ((x_move, dx_res, strip_width),

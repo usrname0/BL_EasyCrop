@@ -12,8 +12,8 @@ from .crop_core import (
     get_draw_handle, set_draw_handle, clear_crop_state,
     get_strip_geometry_with_flip_support, is_strip_visible_at_frame, point_in_polygon,
     get_strips, get_selected_strips,
-    get_strip_dimensions, get_edge_midpoints,
-    res_to_screen, compute_crop_delta, apply_crop_changes
+    get_strip_dimensions, get_edge_midpoints, get_strip_flip_state,
+    res_to_screen, compute_crop_delta, apply_crop_changes, autokey_crop
 )
 from .crop_drawing import draw_crop_handles
 
@@ -201,6 +201,7 @@ class EASYCROP_OT_crop(bpy.types.Operator):
                     return self.finish(context)
 
         elif event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
+            self._autokey_if_changed(context, strip)
             self.active_corner = -1
             draw_data['active_corner'] = -1
             set_draw_data(draw_data)
@@ -332,6 +333,34 @@ class EASYCROP_OT_crop(bpy.types.Operator):
     def cancel(self, context):
         """Called when operator is cancelled by Blender."""
         return self.finish(context, cancelled=True)
+
+    def _autokey_if_changed(self, context, strip):
+        """Key the channels this drag moved, if auto-key is on.
+
+        Fires per handle release rather than once at the end, because a single
+        modal session can drag several handles and each is its own edit. The
+        undo step is not this method's problem: unlike the gizmo, this operator
+        carries bl_options {'REGISTER', 'UNDO'} and Blender pushes one when the
+        modal finishes, so the keys inserted here land inside it.
+
+        Why it is needed at all: writing strip.crop through RNA never triggers
+        auto-keying, whatever the toggle says. See ../BLENDER.md -> "Auto-key
+        never fires on a plain RNA write".
+        """
+        if self.active_corner < 0:
+            return
+        if not strip or not hasattr(strip, 'crop') or not strip.crop:
+            return
+
+        # A click that moved nothing must not leave a keyframe behind.
+        started_at = tuple(int(v) for v in self.crop_start)
+        ended_at = (strip.crop.min_x, strip.crop.max_x,
+                    strip.crop.min_y, strip.crop.max_y)
+        if ended_at == started_at:
+            return
+
+        flip_x, flip_y = get_strip_flip_state(strip)
+        autokey_crop(context, strip, self.active_corner, flip_x, flip_y)
 
     def _update_crop(self, context, event):
         """Update crop values based on mouse drag with flip support."""

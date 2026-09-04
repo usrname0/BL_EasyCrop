@@ -33,6 +33,22 @@ GGT_NAME = "EASYCROP_GGT_crop_handles"
 GT_NAME = "EASYCROP_GT_crop_handle"
 TOOL_IDNAME = "sequencer.crop_handles_tool"
 
+# Blender derives an operator's bpy.types name from its bl_idname, not from the
+# Python class name, so EASYCROP_OT_crop registers as SEQUENCER_OT_crop.
+OPERATOR_TYPES = ("SEQUENCER_OT_crop", "SEQUENCER_OT_clear_crop")
+
+
+def operators_registered():
+    """Which of the addon's operators are actually registered.
+
+    WARNING: do not test this with hasattr(bpy.ops.sequencer, "crop").
+    bpy.ops submodules fabricate attributes on access - hasattr is True for any
+    name at all, including one nothing has ever registered, and only the call
+    raises AttributeError. An operator check written that way passes against a
+    completely dead addon.
+    """
+    return tuple(hasattr(bpy.types, name) for name in OPERATOR_TYPES)
+
 
 def gizmos_registered():
     """Return (group, handle) registration flags.
@@ -58,10 +74,15 @@ def main():
         if got != want:
             failures.append(f"{label}: expected {want}, got {got}")
 
+    # Nothing should be registered yet; if these pass before register() the
+    # assertions are not testing anything.
+    for name, present in zip(OPERATOR_TYPES, operators_registered()):
+        check(f"{name} absent before register", present, False)
+
     addon.register()
 
-    check("sequencer.crop registered", hasattr(bpy.ops.sequencer, "crop"))
-    check("sequencer.clear_crop registered", hasattr(bpy.ops.sequencer, "clear_crop"))
+    for name, present in zip(OPERATOR_TYPES, operators_registered()):
+        check(f"{name} registered", present)
     group, handle = gizmos_registered()
     check("gizmo group registered", group)
     check("gizmo handle registered", handle)
@@ -70,6 +91,8 @@ def main():
 
     addon.unregister()
 
+    for name, present in zip(OPERATOR_TYPES, operators_registered()):
+        check(f"{name} unregistered", present, False)
     group, handle = gizmos_registered()
     check("gizmo group unregistered", group, False)
     check("gizmo handle unregistered", handle, False)

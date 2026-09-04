@@ -13,9 +13,9 @@ from mathutils import Vector, Matrix
 
 from ..operators.crop_core import (
     get_crop_state, is_strip_visible_at_frame,
-    get_strip_geometry_with_flip_support,
+    get_strip_geometry_with_flip_support, get_strip_flip_state,
     get_strip_rotation, get_strip_dimensions, get_edge_midpoints,
-    res_to_screen, compute_crop_delta, apply_crop_changes
+    res_to_screen, compute_crop_delta, apply_crop_changes, autokey_crop
 )
 from ..operators.crop_drawing import draw_crop_symbol_at, draw_rotated_square
 
@@ -259,12 +259,49 @@ class EASYCROP_GT_crop_handle(Gizmo):
         except Exception:
             pass
 
+    def _commit(self, context):
+        """Auto-key and push undo for a drag that changed something.
+
+        WARNING: call this from exit(), never from a LEFTMOUSE/RELEASE branch
+        in modal(). Blender's gizmo tweak operator matches the confirming
+        release against its own modal keymap and finishes the modal itself, so
+        modal() is not reliably given the release. The drag still works
+        perfectly and only the commit goes missing, which is why this failed
+        silently in BL_PerspectiveTransform for a whole release. See
+        ../BLENDER.md -> "End-of-drag work belongs in exit(), not modal()".
+
+        Gizmos get no undo step of their own - unlike the modal operator, which
+        has bl_options {'REGISTER', 'UNDO'} - so without the push here a crop
+        dragged with the tool cannot be undone at all.
+        """
+        strip = context.scene.sequence_editor.active_strip
+        if not strip or not hasattr(strip, 'crop') or not strip.crop:
+            return
+
+        # A bare click on a handle changes nothing; keying and pushing undo for
+        # it would leave a stray keyframe and a no-op undo step.
+        started_at = tuple(int(v) for v in self.crop_start)
+        ended_at = (strip.crop.min_x, strip.crop.max_x,
+                    strip.crop.min_y, strip.crop.max_y)
+        if ended_at == started_at:
+            return
+
+        handle_index = (self.handle_index if self.handle_type == "corner"
+                        else self.handle_index + 4)
+        flip_x, flip_y = get_strip_flip_state(strip)
+        # Keys first, so they land inside the undo step the push opens.
+        autokey_crop(context, strip, handle_index, flip_x, flip_y)
+        bpy.ops.ed.undo_push(message="Crop")
+
     def exit(self, context, cancel):
         """Handle gizmo exit."""
         if self.handle_type != "center":
 
             # Clear drag state to allow gizmo repositioning again
             EASYCROP_GGT_crop_handles._drag_active = False
+
+            if not cancel:
+                self._commit(context)
 
             # Deferred cursor warp to final handle position (unless cancelled)
             if not cancel:

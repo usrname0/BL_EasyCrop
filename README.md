@@ -14,26 +14,24 @@ Quick breakdown of menu options, etc:
 
  ![demo](./examples/easycrop-menu.png)
 
+Crops can be animated. Turn on Auto Keying and drag a handle, and the keyframes are inserted for you.
+
+
 ## Compatibility
 
 - Blender 4.4+
 - Works with all strip types that support cropping
 
-## Auto Installation
-![Auto Install 1](./examples/install1.png)
+## Installation
 
-![Auto Install 2](./examples/install2_auto.png)
+**From Blender.** Edit > Preferences > Get Extensions, search for "BL Easy Crop",
+and press Install.
 
-## Manual Installation
+**From a zip.** Download the latest
+[zip](https://github.com/usrname0/BL_EasyCrop/releases) and install it as an
+extension: Edit > Preferences > Add-ons, then the drop-down arrow at the top
+right > Install from Disk, and pick the zip.
 
-Download the latest [zip](https://github.com/usrname0/BL_EasyCrop/releases). Install it as a zip file like this:
-
-![Manual Install 1](./examples/install1.png)
-
-![Manual Install 1](./examples/install2.png)
-
-![Manual Install 1](./examples/install3.png)
-   
 ## Troubleshooting
 
 It should just work right away after installing.  If the addon doesn't appear after installation:
