@@ -114,10 +114,11 @@ class EASYCROP_GT_crop_handle(Gizmo):
 
         The return is RNA's intersect_id, whose only special value is -1, "skip
         this gizmo". It indexes a part *within* one gizmo, and these have one
-        part each, so 0 is the whole vocabulary for a hit. Handing back a
-        per-handle id instead looked like it identified which handle was struck;
-        it never did - Blender asks each gizmo separately, and invoke() reads
-        handle_type and handle_index for that.
+        part each, so 0 is the whole vocabulary for a hit.
+
+        WARNING: do not return a per-handle id here. It reads as though it
+        identifies which handle was struck and it does not - Blender asks each
+        gizmo separately, and invoke() reads handle_type and handle_index.
         """
         gizmo_pos = self.matrix_basis.translation
         mouse_pos = event
@@ -464,7 +465,7 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
 
         The use_* flags repeat what EASYCROP_GT_crop_handle.setup() already set
         on each gizmo. Which of the two Blender consults has not been
-        established, so both are left in place. Note that the centre handle
+        established, so both are left in place. Note that the center handle
         deliberately gets fewer: it never drags, so use_draw_modal and
         use_grab_cursor would have nothing to govern.
         """
@@ -566,20 +567,6 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
     def draw_prepare(self, context: bpy.types.Context):
         """Prepare for drawing."""
         self.refresh(context)
-
-    def draw_select(self, context: bpy.types.Context):
-        """Draw during modal operations - ensure handles stay visible."""
-        scene = context.scene
-        if not scene.sequence_editor or not scene.sequence_editor.active_strip:
-            return
-
-        active_strip = scene.sequence_editor.active_strip
-        if not hasattr(active_strip, 'crop'):
-            return
-
-        for gizmo in self.gizmos:
-            cast(EASYCROP_GT_crop_handle, gizmo)._draw_handle_common(
-                context, during_modal=True)
 
 
 def register_crop_handles_gizmo():

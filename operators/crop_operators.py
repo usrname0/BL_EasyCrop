@@ -500,10 +500,11 @@ class EASYCROP_OT_crop(bpy.types.Operator):
 
         WARNING: the crop filter is load-bearing, not tidiness. A strip with no
         crop also has no transform, and get_strip_geometry_with_flip_support
-        then falls back to offset 0 and scale 1 - the whole render rectangle -
-        so an unfiltered strip matches a click anywhere in the preview. A sound
-        strip on a higher channel than the one being cropped would swallow every
-        click-through test and end the crop, with nothing to report.
+        guards neither, so an unfiltered sound strip raises AttributeError out
+        of a click test. Guarding the geometry instead of filtering here is the
+        wrong repair: that hands such a strip the whole render rectangle, and a
+        sound strip on a higher channel then swallows every click-through test
+        and ends the crop with nothing to report.
         """
         scene = context.scene
         if not scene.sequence_editor:

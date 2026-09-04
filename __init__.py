@@ -44,8 +44,7 @@ class EASYCROP_OT_clear_crop(bpy.types.Operator):
 
         for strip in get_selected_strips(context):
             # crop is declared on the concrete strip subclasses, not on Strip,
-            # so one getattr is both the capability check and the handle. The
-            # hasattr form read the attribute five times and narrowed nothing.
+            # so one getattr is both the capability check and the handle.
             crop = getattr(strip, 'crop', None)
             if crop:
                 crop.min_x = 0

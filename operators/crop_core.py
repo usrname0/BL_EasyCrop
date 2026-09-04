@@ -24,10 +24,12 @@ _USE_STRIPS_API = bpy.app.version >= (5, 0, 0)
 HANDLE_RADIUS = 6.0
 SELECT_RADIUS = 25.0
 
-# One palette, shared. The gizmo tool drew its white handles at alpha 0.8 and
-# the modal operator drew the same handles at 0.7, which is a visible step
-# between the two interfaces for no reason anyone recorded. 0.8 is the gizmo's,
-# and the gizmo is the primary interface.
+# The handle palette. White for a handle at rest, orange for the one under the
+# pointer or being dragged.
+#
+# WARNING: one palette for both interfaces. The gizmo tool and the modal
+# operator draw the same handles, so a value changed here and not there shows
+# up as a step between them at the instant a drag starts.
 HANDLE_COLOR = (1.0, 1.0, 1.0, 0.8)
 ACCENT_COLOR = (1.0, 0.5, 0.0, 1.0)
 
@@ -78,10 +80,8 @@ def point_in_polygon(point, polygon):
                     # The division is safe unguarded: reaching here requires
                     # y > min(p1y, p2y) and y <= max(p1y, p2y), which no y
                     # satisfies when p1y == p2y, so a horizontal edge never
-                    # gets this far. The `if p1y != p2y` that used to wrap it
-                    # was dead, and on the branch it guarded left xinters
-                    # unbound - a NameError rather than the ZeroDivisionError
-                    # it was there to prevent.
+                    # gets this far. Do not add a `p1y != p2y` guard - it is
+                    # dead, and its else branch leaves xinters unbound.
                     xinters = (y - p1y) * (p2x - p1x) / (p2y - p1y) + p1x
                     if p1x == p2x or x <= xinters:
                         inside = not inside
@@ -191,26 +191,22 @@ def handle_screen_angle(screen_corners):
     Returns:
         float: radians, 0 for an unrotated strip
 
-    One angle for all nine handles, and one derivation for both draw paths -
-    the gizmo group's refresh() and the hand-drawn pass that replaces it during
-    a drag. Both used to work it out for themselves and they disagreed twice
-    over:
+    WARNING: one angle for all nine handles, and this is the only derivation.
+    Both draw paths - the gizmo group's refresh() and the hand-drawn pass that
+    replaces it during a drag - call this rather than work it out again.
 
-    - refresh() gave each handle the angle of the edge it sits on, 90 degrees
-      further round for each successive handle. A square is symmetric under 90
-      degrees so the shape was identical, but draw_rotated_square cuts its
-      square into triangles by fixed vertex index, so the split diagonal turned
-      with the angle. 6 of 8 handles ended up split the other way from the drag
-      path, which is visible as the two sets of handles being anti-aliased
-      differently at the instant a drag starts.
-    - The drag path derived the angle from transform.rotation and negated it
-      when the flips differed, which is a second way of computing the same
-      number and a second thing to keep in step.
+    Giving each handle the angle of the edge it sits on is the tempting
+    variant, and it is wrong. A square is symmetric under 90 degrees so the
+    shape comes out identical, but draw_rotated_square cuts its square into
+    triangles by fixed vertex index, so the split diagonal turns with the
+    angle. Handles split the other way from the drag path are visibly
+    anti-aliased differently at the instant a drag starts.
 
-    Measuring the edge on screen needs neither the raw rotation nor the flip
-    correction: the quad has already had both applied to it. It also needs no
-    zero threshold, because an unrotated strip's first edge points exactly at
-    +Y and this returns exactly 0.
+    Deriving it from transform.rotation instead is the other tempting variant,
+    and it needs the flip correction reapplied by hand. Measuring the edge on
+    screen needs neither the raw rotation nor the flip correction: the quad has
+    already had both applied to it. It also needs no zero threshold, because an
+    unrotated strip's first edge points exactly at +Y and this returns exactly 0.
     """
     edge_x = screen_corners[1][0] - screen_corners[0][0]
     edge_y = screen_corners[1][1] - screen_corners[0][1]
