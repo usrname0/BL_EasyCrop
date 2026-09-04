@@ -13,7 +13,7 @@ from gpu_extras.batch import batch_for_shader
 
 from .crop_core import (
     get_crop_state, get_draw_data, set_draw_data,
-    get_strip_geometry_with_flip_support, get_strip_rotation,
+    get_strip_geometry_with_flip_support, handle_screen_angle,
     get_edge_midpoints, is_strip_visible_at_frame,
     res_to_screen, HANDLE_RADIUS, SELECT_RADIUS
 )
@@ -157,7 +157,7 @@ def draw_crop_handles():
     ACCENT_COLOR = (1.0, 0.5, 0.0, 1.0)
     HANDLE_COLOR = (1.0, 1.0, 1.0, 0.7)
 
-    corners, (pivot_x, pivot_y), (_, _, flip_x, flip_y) = \
+    corners, (pivot_x, pivot_y), _ = \
         get_strip_geometry_with_flip_support(strip, scene)
     edge_midpoints = get_edge_midpoints(corners)
 
@@ -182,11 +182,10 @@ def draw_crop_handles():
     hover_corner = _get_hovered_corner(screen_corners, screen_midpoints,
                                        mouse_x, mouse_y)
 
-    # Mirroring one axis reverses which way the strip turns, so the squares
-    # tilt the other way too.
-    angle = get_strip_rotation(strip)
-    if flip_x != flip_y:
-        angle = -angle
+    # The same angle, from the same helper, that the gizmo tool's two draw
+    # paths use. Measuring the on-screen quad needs no flip correction: the
+    # quad has already had the mirroring applied to it.
+    angle = handle_screen_angle(screen_corners)
 
     # Corners 0-3 then edge midpoints 4-7, the numbering apply_crop_changes uses.
     for i, pos in enumerate(screen_corners + screen_midpoints):

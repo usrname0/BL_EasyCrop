@@ -11,7 +11,6 @@ where a handle belongs on a flipped or rotated strip.
 """
 
 import bpy
-import math
 import gpu
 from bpy.types import Gizmo, GizmoGroup
 from mathutils import Vector, Matrix
@@ -19,9 +18,9 @@ from mathutils import Vector, Matrix
 from ..operators.crop_core import (
     get_crop_state, is_strip_visible_at_frame,
     get_strip_geometry_with_flip_support, get_strip_flip_state,
-    get_strip_rotation, get_strip_dimensions, get_edge_midpoints,
+    get_strip_dimensions, get_edge_midpoints,
     res_to_screen, compute_crop_delta, apply_crop_changes, autokey_crop,
-    handle_window_position, HANDLE_RADIUS, SELECT_RADIUS
+    handle_window_position, handle_screen_angle, HANDLE_RADIUS, SELECT_RADIUS
 )
 from ..operators.crop_drawing import draw_crop_symbol_at, draw_rotated_square
 
@@ -234,14 +233,16 @@ class EASYCROP_GT_crop_handle(Gizmo):
         prev_blend = gpu.state.blend_get()
         gpu.state.blend_set('ALPHA')
 
-        # Get rotation with flip compensation for handle drawing
-        angle = get_strip_rotation(strip)
-        if flip_x != flip_y:
-            angle = -angle
+        # The same angle refresh() gives the gizmos, from the same helper, so
+        # the handles cannot change appearance at the moment a drag starts.
+        screen_corners = [
+            Vector(res_to_screen(c.x, c.y, res_x, res_y, view2d))
+            for c in corners
+        ]
+        angle = handle_screen_angle(screen_corners)
 
         # Draw corner handles
-        for i, corner in enumerate(corners):
-            screen_co = res_to_screen(corner.x, corner.y, res_x, res_y, view2d)
+        for i, screen_co in enumerate(screen_corners):
             if self.handle_type == "corner" and self.handle_index == i:
                 color = (1.0, 0.5, 0.0, 1.0)
             else:
@@ -518,47 +519,28 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
             for c in corners
         ]
 
-        # Get raw rotation angle once for both loops
-        raw_angle = get_strip_rotation(active_strip)
+        # One angle for every handle, and the same one the drag path uses.
+        # WARNING: do not go back to a per-handle angle - see the helper.
+        handle_angle = handle_screen_angle(screen_corners)
 
         # Position corner handles (0-3)
         for i in range(4):
             screen_co = screen_corners[i]
-            rotation_angle = 0
 
-            if abs(raw_angle) > 0.01:
-                next_corner1 = i
-                next_corner2 = (i + 1) % 4
-                next_edge_vec = screen_corners[next_corner2] - screen_corners[next_corner1]
-                next_edge_angle = math.atan2(next_edge_vec.y, next_edge_vec.x)
-                rotation_angle = next_edge_angle - math.pi / 2
-
-            transform_matrix = Matrix.Translation((screen_co[0], screen_co[1], 0))
-            if abs(rotation_angle) > 0.01:
-                rotation_matrix = Matrix.Rotation(rotation_angle, 4, 'Z')
-                transform_matrix = transform_matrix @ rotation_matrix
+            transform_matrix = (Matrix.Translation((screen_co[0], screen_co[1], 0))
+                                @ Matrix.Rotation(handle_angle, 4, 'Z'))
 
             self.gizmos[i].matrix_basis = transform_matrix
             self.gizmos[i].hide = False
             self.gizmos[i].alpha = 0.8
 
-        # Position edge handles (4-7)
+        # Position edge handles (4-7) - same one angle, for the same reason.
         for i in range(4):
             midpoint = edge_midpoints[i]
             screen_co = res_to_screen(midpoint.x, midpoint.y, res_x, res_y, view2d)
-            rotation_angle = 0
 
-            if abs(raw_angle) > 0.01:
-                corner1_idx = i
-                corner2_idx = (i + 1) % 4
-                edge_vec = screen_corners[corner2_idx] - screen_corners[corner1_idx]
-                edge_angle = math.atan2(edge_vec.y, edge_vec.x)
-                rotation_angle = edge_angle - math.pi / 2
-
-            transform_matrix = Matrix.Translation((screen_co[0], screen_co[1], 0))
-            if abs(rotation_angle) > 0.01:
-                rotation_matrix = Matrix.Rotation(rotation_angle, 4, 'Z')
-                transform_matrix = transform_matrix @ rotation_matrix
+            transform_matrix = (Matrix.Translation((screen_co[0], screen_co[1], 0))
+                                @ Matrix.Rotation(handle_angle, 4, 'Z'))
 
             self.gizmos[i + 4].matrix_basis = transform_matrix
             self.gizmos[i + 4].hide = False

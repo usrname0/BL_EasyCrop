@@ -165,6 +165,43 @@ def res_to_screen(point_x, point_y, res_x, res_y, view2d):
         point_x - res_x / 2, point_y - res_y / 2, clip=False)
 
 
+def handle_screen_angle(screen_corners):
+    """The angle every crop handle is drawn at, from the quad's first edge.
+
+    Args:
+        screen_corners: the four corners in region pixels, BL TL TR BR.
+            Indexed, not attribute-accessed, so tuples and Vectors both work -
+            the three call sites do not agree on which they carry.
+
+    Returns:
+        float: radians, 0 for an unrotated strip
+
+    One angle for all nine handles, and one derivation for both draw paths -
+    the gizmo group's refresh() and the hand-drawn pass that replaces it during
+    a drag. Both used to work it out for themselves and they disagreed twice
+    over:
+
+    - refresh() gave each handle the angle of the edge it sits on, 90 degrees
+      further round for each successive handle. A square is symmetric under 90
+      degrees so the shape was identical, but draw_rotated_square cuts its
+      square into triangles by fixed vertex index, so the split diagonal turned
+      with the angle. 6 of 8 handles ended up split the other way from the drag
+      path, which is visible as the two sets of handles being anti-aliased
+      differently at the instant a drag starts.
+    - The drag path derived the angle from transform.rotation and negated it
+      when the flips differed, which is a second way of computing the same
+      number and a second thing to keep in step.
+
+    Measuring the edge on screen needs neither the raw rotation nor the flip
+    correction: the quad has already had both applied to it. It also needs no
+    zero threshold, because an unrotated strip's first edge points exactly at
+    +Y and this returns exactly 0.
+    """
+    edge_x = screen_corners[1][0] - screen_corners[0][0]
+    edge_y = screen_corners[1][1] - screen_corners[0][1]
+    return math.atan2(edge_y, edge_x) - math.pi / 2
+
+
 def handle_window_position(strip, scene, region, handle_index):
     """Where a handle sits right now, in window pixels, for cursor_warp.
 
