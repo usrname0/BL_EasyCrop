@@ -31,6 +31,7 @@ MANIFEST
 zips/
 .claude/
 CLAUDE.md
+BLENDER.md
 DEV.md
 
 # PyInstaller
@@ -199,3 +200,15 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+
+# Headless test output
+tests/_output/
+
+# Blender auto-backups
+*.blend1
+
+# Pre-publish notes (internal, see Blender_Dev/PREPUBLISH.md)
+PREPUBLISH_LOG.md
+FALLBACKS.md
+REFACTOR.md
+HISTORY.md
