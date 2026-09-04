@@ -1,6 +1,6 @@
 # BL Easy Crop
 
-BL Easy Crop lets you click and drag handles to crop in Blender's Visual Sequence Editor / preview window.
+BL Easy Crop lets you click and drag handles to crop in Blender's Video Sequence Editor / preview window.
 With this extension Blender's built-in crop looks and behaves a bit more like the other transforms: rotate, scale, move and transform.
 It can be accessed via the preview window toolbar, menus or keyboard shortcut (default "Shift + C").
 
@@ -14,8 +14,7 @@ Quick breakdown of menu options, etc:
 
  ![demo](./examples/easycrop-menu.png)
 
-Crops can be animated. Turn on Auto Keying and drag a handle, and the keyframes are inserted for you.
-
+Crops can also be animated. Turn on Auto Keying and drag a handle, and the keyframes are inserted for you.
 
 ## Compatibility
 
