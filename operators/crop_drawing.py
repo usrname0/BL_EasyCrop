@@ -76,7 +76,10 @@ def draw_crop_symbol_at(center_x, center_y, color=HANDLE_COLOR):
     batch.draw(line_shader)
 
     gpu.state.line_width_set(1.0)
-    gpu.state.blend_set(prev_blend)
+    # blend_get() is typed as returning str while blend_set() takes a Literal
+    # union, so restoring what was saved can never type-check. The stub
+    # asymmetry is the defect, not this line.
+    gpu.state.blend_set(prev_blend)  # pyright: ignore[reportArgumentType]
 
 
 def draw_rotated_square(center_x, center_y, half_size, angle, color):
@@ -135,7 +138,10 @@ def draw_rotated_square(center_x, center_y, half_size, angle, color):
     shader.uniform_float("color", color)
     batch.draw(shader)
 
-    gpu.state.blend_set(prev_blend)
+    # blend_get() is typed as returning str while blend_set() takes a Literal
+    # union, so restoring what was saved can never type-check. The stub
+    # asymmetry is the defect, not this line.
+    gpu.state.blend_set(prev_blend)  # pyright: ignore[reportArgumentType]
 
 
 # --- Modal operator draw callback ---

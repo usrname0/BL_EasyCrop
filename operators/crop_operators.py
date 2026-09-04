@@ -42,7 +42,7 @@ class EASYCROP_OT_crop(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context: bpy.types.Context):
         scene = context.scene
         if not scene.sequence_editor:
             return False
@@ -61,7 +61,7 @@ class EASYCROP_OT_crop(bpy.types.Operator):
 
         return False
 
-    def invoke(self, context, event):
+    def invoke(self, context: bpy.types.Context, event: bpy.types.Event):
         crop_state = get_crop_state()
 
         if crop_state['active']:
@@ -154,7 +154,7 @@ class EASYCROP_OT_crop(bpy.types.Operator):
 
         return {'RUNNING_MODAL'}
 
-    def modal(self, context, event):
+    def modal(self, context: bpy.types.Context, event: bpy.types.Event):
         draw_data = get_draw_data()
 
         if hasattr(event, 'mouse_region_x') and hasattr(event, 'mouse_region_y'):
@@ -205,7 +205,9 @@ class EASYCROP_OT_crop(bpy.types.Operator):
                         bpy.ops.sequencer.select_all(action='DESELECT')
                     clicked_strip.select = True
                     context.scene.sequence_editor.active_strip = clicked_strip
-                    bpy.ops.sequencer.crop('INVOKE_DEFAULT')
+                    # This addon's own operator, registered into Blender's
+                    # own namespace, so no type stub knows about it.
+                    bpy.ops.sequencer.crop('INVOKE_DEFAULT')  # pyright: ignore[reportAttributeAccessIssue]
                     return {'FINISHED'}
                 else:
                     return self.finish(context)
@@ -402,7 +404,7 @@ class EASYCROP_OT_crop(bpy.types.Operator):
 
         return screen_corners, screen_midpoints
 
-    def cancel(self, context):
+    def cancel(self, context: bpy.types.Context):
         """Called when operator is canceled by Blender."""
         return self.finish(context, cancelled=True)
 

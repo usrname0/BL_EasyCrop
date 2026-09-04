@@ -29,7 +29,7 @@ class EASYCROP_OT_clear_crop(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context: bpy.types.Context):
         if not context.scene.sequence_editor:
             return False
 
@@ -39,16 +39,19 @@ class EASYCROP_OT_clear_crop(bpy.types.Operator):
                 return True
         return False
 
-    def execute(self, context):
+    def execute(self, context: bpy.types.Context):
         cleared_count = 0
 
         for strip in get_selected_strips(context):
-            if hasattr(strip, 'crop') and strip.crop:
-                # Reset all crop values to 0
-                strip.crop.min_x = 0
-                strip.crop.max_x = 0
-                strip.crop.min_y = 0
-                strip.crop.max_y = 0
+            # crop is declared on the concrete strip subclasses, not on Strip,
+            # so one getattr is both the capability check and the handle. The
+            # hasattr form read the attribute five times and narrowed nothing.
+            crop = getattr(strip, 'crop', None)
+            if crop:
+                crop.min_x = 0
+                crop.max_x = 0
+                crop.min_y = 0
+                crop.max_y = 0
                 cleared_count += 1
 
         if cleared_count > 0:

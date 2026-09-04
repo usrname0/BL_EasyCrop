@@ -49,6 +49,7 @@ import tempfile
 import traceback
 import wave
 from pathlib import Path
+from typing import Any, cast
 
 import bpy
 from mathutils import Matrix, Vector
@@ -71,6 +72,17 @@ failures = []
 def check(label, got, want):
     if got != want:
         failures.append(f"{label}: expected {want}, got {got}")
+
+
+def unbound(method):
+    """Call a real method with a stand-in for self.
+
+    These tests drive the addon's own methods against fakes, which is what lets
+    the logic be exercised with no modal session and no gizmo Blender is
+    driving. A type checker cannot tell a deliberate stand-in from a mistake,
+    so the ones that are deliberate say so here.
+    """
+    return cast(Any, method)
 
 
 def write_silent_wav():
@@ -119,7 +131,7 @@ def test_croppable_only_reaches_the_hit_test():
     color, sound = make_scene()
 
     # self is unused, so the method can be driven without an operator instance.
-    visible = EASYCROP_OT_crop._get_visible_strips(None, bpy.context)
+    visible = unbound(EASYCROP_OT_crop._get_visible_strips)(None, bpy.context)
     names = [strip.name for strip in visible]
 
     check("sound strip excluded", sound.name in names, False)
@@ -175,7 +187,7 @@ class FakeOperator:
 
 def grab_at(handles, x, y):
     """Drive _get_corner_at_mouse against a fixed set of handle positions."""
-    return EASYCROP_OT_crop._get_corner_at_mouse(
+    return unbound(EASYCROP_OT_crop._get_corner_at_mouse)(
         FakeOperator(handles), None, FakeEvent(x, y))
 
 
@@ -268,7 +280,7 @@ def test_gizmo_test_select_answers_hit_or_skip():
     Blender's hands for a gizmo that has one part.
     """
     gizmo = FakeGizmo(500, 500)
-    call = EASYCROP_GT_crop_handle.test_select
+    call = unbound(EASYCROP_GT_crop_handle.test_select)
 
     check("dead centre is a hit", call(gizmo, None, (500, 500)), 0)
     check("just inside the radius is a hit",
@@ -280,7 +292,7 @@ def test_gizmo_test_select_answers_hit_or_skip():
 def test_gizmo_hit_radius_matches_the_shared_constant():
     """The gizmo grabs at SELECT_RADIUS, the same number the modal pair uses."""
     gizmo = FakeGizmo(0, 0)
-    call = EASYCROP_GT_crop_handle.test_select
+    call = unbound(EASYCROP_GT_crop_handle.test_select)
 
     inside = call(gizmo, None, (int(SELECT_RADIUS) - 1, 0))
     outside = call(gizmo, None, (int(SELECT_RADIUS) + 2, 0))

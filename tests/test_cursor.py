@@ -40,6 +40,7 @@ import inspect
 import sys
 import traceback
 from pathlib import Path
+from typing import Any, cast
 
 import bpy
 
@@ -60,6 +61,17 @@ failures = []
 def check(label, got, want):
     if got != want:
         failures.append(f"{label}: expected {want}, got {got}")
+
+
+def unbound(method):
+    """Call a real method with a stand-in for self.
+
+    These tests drive the addon's own methods against fakes, which is what lets
+    the logic be exercised with no modal session and no gizmo Blender is
+    driving. A type checker cannot tell a deliberate stand-in from a mistake,
+    so the ones that are deliberate say so here.
+    """
+    return cast(Any, method)
 
 
 class FakeView2D:
@@ -183,6 +195,12 @@ def test_position_follows_the_crop():
     scene = bpy.context.scene
 
     before = handle_window_position(strip, scene, region, 0)
+    if before is None:
+        # Report rather than raise: a None here is a failure of this test's
+        # premise, not a crash the runner should have to interpret.
+        check("geometry available before the move", before, "an (x, y) tuple")
+        return
+
     strip.crop.min_x = 300
     strip.crop.min_y = 200
     after = handle_window_position(strip, scene, region, 0)
@@ -249,8 +267,8 @@ def test_hide_is_idempotent():
     operator = FakeSelf()
     context = FakeContext(window)
 
-    EASYCROP_OT_crop._hide_cursor(operator, context)
-    EASYCROP_OT_crop._hide_cursor(operator, context)
+    unbound(EASYCROP_OT_crop._hide_cursor)(operator, context)
+    unbound(EASYCROP_OT_crop._hide_cursor)(operator, context)
 
     check("hidden once", window.calls, [("set", 'NONE')])
     check("flag set", operator.cursor_hidden, True)
@@ -268,7 +286,7 @@ def test_restore_warps_then_shows():
     operator.cursor_hidden = True
     context = FakeContext(window, FakeRegion(), bpy.context.scene)
 
-    EASYCROP_OT_crop._restore_cursor(operator, context, 0)
+    unbound(EASYCROP_OT_crop._restore_cursor)(operator, context, 0)
 
     check("warped, then restored", window.calls,
           [("warp", REGION_X, REGION_Y), ("restore",)])
@@ -285,7 +303,7 @@ def test_restore_without_a_handle_still_shows_the_pointer():
     operator = FakeSelf()
     operator.cursor_hidden = True
 
-    EASYCROP_OT_crop._restore_cursor(operator, FakeContext(window), -1)
+    unbound(EASYCROP_OT_crop._restore_cursor)(operator, FakeContext(window), -1)
 
     check("restored without warping", window.calls, [("restore",)])
 
@@ -295,7 +313,7 @@ def test_restore_does_nothing_when_nothing_was_hidden():
     window = FakeWindow()
     operator = FakeSelf()
 
-    EASYCROP_OT_crop._restore_cursor(operator, FakeContext(window), 0)
+    unbound(EASYCROP_OT_crop._restore_cursor)(operator, FakeContext(window), 0)
 
     check("no cursor calls", window.calls, [])
 

@@ -10,6 +10,9 @@ also uses. Keeping one source is what stops the two interfaces disagreeing about
 where a handle belongs on a flipped or rotated strip.
 """
 
+from collections.abc import Sequence
+from typing import cast
+
 import bpy
 from bpy.types import Gizmo, GizmoGroup
 from mathutils import Vector, Matrix
@@ -33,6 +36,15 @@ class EASYCROP_GT_crop_handle(Gizmo):
     """
     bl_idname = "EASYCROP_GT_crop_handle"
     bl_target_properties = ()
+
+    # The handle's identity, set in setup() and again by the group, and read
+    # back by invoke(), _commit() and _update_crop_from_gizmo_drag(). These
+    # must stay bare annotations rather than assignments: register_class
+    # scans __annotations__ for property declarations and skips an entry
+    # with no value in the class dict, so they remain plain Python
+    # attributes and never enter RNA.
+    handle_type: str
+    handle_index: int
 
     def setup(self):
         """Setup the handle gizmo."""
@@ -58,12 +70,12 @@ class EASYCROP_GT_crop_handle(Gizmo):
 
         self.scale_basis = HANDLE_RADIUS
 
-    def draw_prepare(self, context):
+    def draw_prepare(self, context: bpy.types.Context):
         """Prepare for drawing - ensure gizmo is visible."""
         self.hide = False
         self.alpha = 0.8 if not self.is_highlight else 1.0
 
-    def draw(self, context):
+    def draw(self, context: bpy.types.Context):
         """Draw the handle gizmo."""
         self.hide = False
         center_pos = self.matrix_basis.translation
@@ -77,11 +89,11 @@ class EASYCROP_GT_crop_handle(Gizmo):
             draw_rotated_square(center_pos.x, center_pos.y, HANDLE_RADIUS,
                                 rotation_angle, color)
 
-    def draw_select(self, context, select_id):
+    def draw_select(self, context: bpy.types.Context, select_id: int):
         """Draw during selection/modal operations - keeps handles visible."""
         self._draw_handle_common(context, during_modal=True)
 
-    def _draw_handle_common(self, context, during_modal=False):
+    def _draw_handle_common(self, context: bpy.types.Context, during_modal: bool = False):
         """Common drawing logic for both normal and modal states."""
         center_pos = self.matrix_basis.translation
 
@@ -94,7 +106,7 @@ class EASYCROP_GT_crop_handle(Gizmo):
             draw_rotated_square(center_pos.x, center_pos.y, HANDLE_RADIUS,
                                 rotation_angle, color)
 
-    def test_select(self, context, event):
+    def test_select(self, context: bpy.types.Context, event: Sequence[int]):
         """Test if point is over this gizmo.
 
         WARNING: event is an (x, y) tuple here, not an Event. Blender passes
@@ -117,15 +129,26 @@ class EASYCROP_GT_crop_handle(Gizmo):
         else:
             return -1
 
-    def select(self, context, event):
-        """Handle gizmo selection/click."""
+    def select(self, context: bpy.types.Context, event: bpy.types.Event):
+        """Handle gizmo selection/click.
+
+        WARNING: this is probably not a callback at all. RNA declares
+        Gizmo.select as a bool property rather than a method, so defining it
+        here shadows that property, and `select` appears in none of Blender's
+        gizmo templates or bundled scripts. Nothing in this addon reads
+        Gizmo.select, so the shadowing is inert; whether Blender ever calls
+        this cannot be settled without a real UI session, which is why it is
+        still here.
+        """
         return True
 
-    def invoke(self, context, event):
+    def invoke(self, context: bpy.types.Context, event: bpy.types.Event):
         """Start handle dragging."""
         if self.handle_type == "center":
             try:
-                bpy.ops.sequencer.crop('INVOKE_DEFAULT')
+                # sequencer.crop is this addon's own operator, registered into
+                # Blender's own namespace, so no type stub knows about it.
+                bpy.ops.sequencer.crop('INVOKE_DEFAULT')  # pyright: ignore[reportAttributeAccessIssue]
                 return {'FINISHED'}
             except RuntimeError:
                 # Blender raises when the operator's poll() fails, which a click
@@ -164,7 +187,7 @@ class EASYCROP_GT_crop_handle(Gizmo):
 
             return {'RUNNING_MODAL'}
 
-    def modal(self, context, event, tweak):
+    def modal(self, context: bpy.types.Context, event: bpy.types.Event, tweak: set[str]):
         """Handle dragging modal operation."""
         if self.handle_type == "center":
             return {'FINISHED'}
@@ -320,7 +343,7 @@ class EASYCROP_GT_crop_handle(Gizmo):
         bpy.context.window.cursor_modal_set('NONE')
         bpy.app.timers.register(deferred_cursor_warp, first_interval=0.05)
 
-    def exit(self, context, cancel):
+    def exit(self, context: bpy.types.Context, cancel: bool):
         """End a drag: commit it or undo it, then put back what invoke() changed.
 
         WARNING: this is where the end of a drag has to be handled. Blender's
@@ -394,7 +417,7 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
     _drag_active = False
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context: bpy.types.Context):
         """Check if gizmo group should be active."""
         if not context.space_data or context.space_data.type != 'SEQUENCE_EDITOR':
             return False
@@ -432,7 +455,7 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
 
         return False
 
-    def setup(self, context):
+    def setup(self, context: bpy.types.Context):
         """Create the nine handles.
 
         WARNING: creation order is load-bearing. refresh() addresses them as
@@ -446,7 +469,8 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
         use_grab_cursor would have nothing to govern.
         """
         for i in range(4):
-            gizmo = self.gizmos.new(EASYCROP_GT_crop_handle.bl_idname)
+            gizmo = cast(EASYCROP_GT_crop_handle,
+                         self.gizmos.new(EASYCROP_GT_crop_handle.bl_idname))
             gizmo.handle_type = "corner"
             gizmo.handle_index = i
 
@@ -455,7 +479,8 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
             gizmo.use_grab_cursor = True
 
         for i in range(4):
-            gizmo = self.gizmos.new(EASYCROP_GT_crop_handle.bl_idname)
+            gizmo = cast(EASYCROP_GT_crop_handle,
+                         self.gizmos.new(EASYCROP_GT_crop_handle.bl_idname))
             gizmo.handle_type = "edge"
             gizmo.handle_index = i
 
@@ -463,13 +488,14 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
             gizmo.use_draw_modal = True
             gizmo.use_grab_cursor = True
 
-        gizmo = self.gizmos.new(EASYCROP_GT_crop_handle.bl_idname)
+        gizmo = cast(EASYCROP_GT_crop_handle,
+                     self.gizmos.new(EASYCROP_GT_crop_handle.bl_idname))
         gizmo.handle_type = "center"
         gizmo.handle_index = 0
 
         gizmo.use_event_handle_all = True
 
-    def refresh(self, context):
+    def refresh(self, context: bpy.types.Context):
         """Put each handle where the strip's current crop says it belongs."""
         if self._drag_active:
             return
@@ -537,11 +563,11 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
         self.gizmos[8].hide = False
         self.gizmos[8].alpha = 0.8
 
-    def draw_prepare(self, context):
+    def draw_prepare(self, context: bpy.types.Context):
         """Prepare for drawing."""
         self.refresh(context)
 
-    def draw_select(self, context):
+    def draw_select(self, context: bpy.types.Context):
         """Draw during modal operations - ensure handles stay visible."""
         scene = context.scene
         if not scene.sequence_editor or not scene.sequence_editor.active_strip:
@@ -552,7 +578,8 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
             return
 
         for gizmo in self.gizmos:
-            gizmo._draw_handle_common(context, during_modal=True)
+            cast(EASYCROP_GT_crop_handle, gizmo)._draw_handle_common(
+                context, during_modal=True)
 
 
 def register_crop_handles_gizmo():

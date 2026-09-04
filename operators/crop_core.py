@@ -46,10 +46,16 @@ def get_strips(sequence_editor):
 
 
 def get_selected_strips(context):
-    """Get selected strips from context (compat for 4.4/5.0)."""
-    if _USE_STRIPS_API:
-        return context.selected_strips
-    return context.selected_sequences
+    """Get selected strips from context (compat for 4.4/5.0).
+
+    Returns an empty tuple, never None. selected_strips is a context member
+    rather than a property on the scene: outside a sequencer area it is None on
+    Blender 5.x even with a sequence_editor present. Both operators' poll()
+    gates on the sequence_editor and then iterates this, so handing back None
+    makes poll raise TypeError instead of declining.
+    """
+    strips = context.selected_strips if _USE_STRIPS_API else context.selected_sequences
+    return strips if strips is not None else ()
 
 
 def is_strip_visible_at_frame(strip, frame):
@@ -69,12 +75,14 @@ def point_in_polygon(point, polygon):
         if y > min(p1y, p2y):
             if y <= max(p1y, p2y):
                 if x <= max(p1x, p2x):
-                    # xinters looks possibly-unbound and is not: the tests above
-                    # require y > min(p1y, p2y) and y <= max(p1y, p2y), which no
-                    # y satisfies when p1y == p2y, so a horizontal edge never
-                    # reaches the read.
-                    if p1y != p2y:
-                        xinters = (y - p1y) * (p2x - p1x) / (p2y - p1y) + p1x
+                    # The division is safe unguarded: reaching here requires
+                    # y > min(p1y, p2y) and y <= max(p1y, p2y), which no y
+                    # satisfies when p1y == p2y, so a horizontal edge never
+                    # gets this far. The `if p1y != p2y` that used to wrap it
+                    # was dead, and on the branch it guarded left xinters
+                    # unbound - a NameError rather than the ZeroDivisionError
+                    # it was there to prevent.
+                    xinters = (y - p1y) * (p2x - p1x) / (p2y - p1y) + p1x
                     if p1x == p2x or x <= xinters:
                         inside = not inside
         p1x, p1y = p2x, p2y

@@ -70,7 +70,8 @@ def main():
     version = bpy.app.version_string
     failures = []
 
-    def check(label, got, want=True):
+    # want is object, not bool: two of the callers below compare counts.
+    def check(label, got, want: object = True):
         if got != want:
             failures.append(f"{label}: expected {want}, got {got}")
 
