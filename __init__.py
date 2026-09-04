@@ -33,7 +33,6 @@ class EASYCROP_OT_clear_crop(bpy.types.Operator):
         if not context.scene.sequence_editor:
             return False
 
-        # Check if any selected strips have crop capability
         for strip in get_selected_strips(context):
             if hasattr(strip, 'crop'):
                 return True
@@ -150,10 +149,9 @@ def register():
     keyconfig = bpy.context.window_manager.keyconfigs.addon
     if keyconfig:
         # The VSE preview keymap was renamed "SequencerPreview" -> "Preview" in
-        # Blender 4.5. This addon supports 4.4, so both names are needed.
-        # Measured: 4.4.3 has only "SequencerPreview", 4.5.3+ only "Preview".
-        # The modal operator resolves the same name when it reads the user's
-        # keymap, so the rule lives in one place.
+        # Blender 4.5: 4.4.3 has only the old name, 4.5.3+ only the new. The
+        # modal operator resolves the same name when it reads the user's keymap,
+        # so the rule lives in one place.
         keymap = keyconfig.keymaps.new(name=get_preview_keymap_name(),
                                        space_type="SEQUENCE_EDITOR",
                                        region_type="WINDOW")

@@ -6,8 +6,8 @@ a center symbol that hands over to the modal operator. Handles stay on screen
 for as long as the tool is selected.
 
 Geometry and crop maths come from operators.crop_core, which the modal operator
-also uses. Keeping one source is what stops the two interfaces disagreeing about
-where a handle belongs on a flipped or rotated strip.
+also uses, so the two interfaces cannot disagree about where a handle belongs on
+a flipped or rotated strip.
 """
 
 from collections.abc import Sequence
@@ -37,12 +37,11 @@ class EASYCROP_GT_crop_handle(Gizmo):
     bl_idname = "EASYCROP_GT_crop_handle"
     bl_target_properties = ()
 
-    # The handle's identity, set in setup() and again by the group, and read
-    # back by invoke(), _commit() and _update_crop_from_gizmo_drag(). These
-    # must stay bare annotations rather than assignments: register_class
-    # scans __annotations__ for property declarations and skips an entry
-    # with no value in the class dict, so they remain plain Python
-    # attributes and never enter RNA.
+    # The handle's identity, set in setup() and again by the group. These must
+    # stay bare annotations rather than assignments: register_class scans
+    # __annotations__ for property declarations and skips an entry with no value
+    # in the class dict, so they stay plain Python attributes and never enter
+    # RNA.
     handle_type: str
     handle_index: int
 
@@ -64,10 +63,9 @@ class EASYCROP_GT_crop_handle(Gizmo):
         self.hide = False
 
         # WARNING: do not set color, color_highlight, alpha or alpha_highlight
-        # here. They feed Blender's built-in gizmo drawing, which draw()
-        # replaces entirely, so they reach no pixel - measured inert on 4.4.3
-        # through 5.2.1. The palette this class draws with is crop_core's
-        # HANDLE_COLOR and ACCENT_COLOR.
+        # here. They feed Blender's built-in gizmo drawing, which draw() replaces
+        # entirely, so they reach no pixel - measured inert on 4.4.3 through
+        # 5.2.1. This class draws with crop_core's palette.
 
         self.scale_basis = HANDLE_RADIUS
 
@@ -86,17 +84,15 @@ class EASYCROP_GT_crop_handle(Gizmo):
                                 rotation_angle, color)
 
     def test_select(self, context: bpy.types.Context, event: Sequence[int]):
-        """Test if point is over this gizmo.
+        """Test whether a point is over this gizmo.
 
-        WARNING: event is an (x, y) tuple here, not an Event. Blender passes
+        WARNING: event is an (x, y) tuple here, not an Event - Blender passes
         region coordinates to a gizmo's test_select.
 
-        The return is RNA's intersect_id, whose only special value is -1, "skip
-        this gizmo". It indexes a part *within* one gizmo, and these have one
-        part each, so 0 is the whole vocabulary for a hit.
-
-        WARNING: do not return a per-handle id here. It reads as though it
-        identifies which handle was struck and it does not - Blender asks each
+        The return is RNA's intersect_id: -1 skips this gizmo, anything else
+        indexes a part within it, and these have one part each, so 0 is the
+        whole vocabulary for a hit. Do not return a per-handle id - it reads as
+        identifying which handle was struck and it does not; Blender asks each
         gizmo separately, and invoke() reads handle_type and handle_index.
         """
         gizmo_pos = self.matrix_basis.translation
@@ -122,14 +118,14 @@ class EASYCROP_GT_crop_handle(Gizmo):
                 # on the center symbol can legitimately hit.
                 return {'CANCELLED'}
         else:
-            # The cursor position the next delta is measured from. The drag
+            # The cursor position the next delta is measured from: the drag
             # moves the crop by how far the cursor traveled since the last
-            # event, not by where it now points - see _update_crop_from_gizmo_drag.
+            # event, not by where it now points.
             self.last_mouse_pos = (event.mouse_region_x, event.mouse_region_y)
 
             EASYCROP_GGT_crop_handles._drag_active = True
 
-            # Disable transform gizmos during crop drag. Never swallow a failure
+            # Disable transform gizmos for the drag. Never swallow a failure
             # here: exit() undoes this, and a save that silently did not happen
             # leaves the user's gizmos switched off for the rest of the session.
             self._saved_gizmo_state = context.space_data.show_gizmo
@@ -140,7 +136,6 @@ class EASYCROP_GT_crop_handle(Gizmo):
             self._modal_draw_handler = bpy.types.SpaceSequenceEditor.draw_handler_add(
                 self._draw_handles_during_modal, (), 'PREVIEW', 'POST_PIXEL')
 
-            # Store initial crop values for this drag operation
             strip = context.scene.sequence_editor.active_strip
             if strip and hasattr(strip, 'crop') and strip.crop:
                 self.crop_start = (float(strip.crop.min_x), float(strip.crop.max_x),
@@ -171,9 +166,8 @@ class EASYCROP_GT_crop_handle(Gizmo):
             delta = (0, 0)
 
         # WARNING: do not wrap this in a blanket except. last_mouse_pos has
-        # already advanced, so a swallowed failure consumes the event's delta
-        # and the drag carries on with the crop no longer tracking the cursor,
-        # stranding the user with nothing on screen to explain it.
+        # already advanced, so a swallowed failure consumes the event's delta and
+        # the drag carries on with the crop no longer tracking the cursor.
         strip = context.scene.sequence_editor.active_strip
         if strip and hasattr(strip, 'crop'):
             self._update_crop_from_gizmo_drag(context, delta, strip)
@@ -211,9 +205,9 @@ class EASYCROP_GT_crop_handle(Gizmo):
         res_x = scene.render.resolution_x
         res_y = scene.render.resolution_y
 
-        # No blend handling here: draw_rotated_square and draw_crop_symbol_at
-        # each set and restore their own, so all three draw paths composite the
-        # same way whatever pass Blender calls them from.
+        # No blend handling here: the two primitives each set and restore their
+        # own, so all three draw paths composite the same way whatever pass
+        # Blender calls them from.
 
         # The same angle refresh() gives the gizmos, from the same helper, so
         # the handles cannot change appearance at the moment a drag starts.
@@ -246,12 +240,10 @@ class EASYCROP_GT_crop_handle(Gizmo):
         WARNING: call this from exit(), never from a LEFTMOUSE/RELEASE branch
         in modal(). Blender's gizmo tweak operator matches the confirming
         release against its own modal keymap and finishes the modal itself, so
-        modal() is not reliably given the release. The drag still works
-        perfectly and only the commit goes missing, so the mistake is invisible
-        until someone tries to undo.
+        modal() is not reliably given the release - the drag still works and
+        only the commit goes missing, which is invisible until someone undoes.
 
-        Gizmos get no undo step of their own - unlike the modal operator, which
-        has bl_options {'REGISTER', 'UNDO'} - so without the push here a crop
+        Gizmos get no undo step of their own, so without the push here a crop
         dragged with the tool cannot be undone at all.
         """
         strip = context.scene.sequence_editor.active_strip
@@ -279,7 +271,7 @@ class EASYCROP_GT_crop_handle(Gizmo):
         use_grab_cursor returns the pointer to where the drag started, which
         after a constrained drag need not be where the handle ended up. The warp
         is deferred on a short timer because Blender restores the cursor after
-        exit() returns, so warping inline is overwritten.
+        exit() returns, which overwrites an inline warp.
 
         WARNING: cursor_modal_set('NONE') hides the pointer and only the timer
         callback restores it. Nothing may be added between those two calls, and
@@ -313,9 +305,8 @@ class EASYCROP_GT_crop_handle(Gizmo):
     def exit(self, context: bpy.types.Context, cancel: bool):
         """End a drag: commit it or undo it, then put back what invoke() changed.
 
-        WARNING: this is where the end of a drag has to be handled. Blender's
-        gizmo tweak operator finishes the modal itself on the confirming
-        release, so modal() cannot be relied on to see it - see _commit.
+        WARNING: this is where the end of a drag has to be handled - modal()
+        cannot be relied on to see the confirming release. _commit has the rule.
         """
         if self.handle_type == "center":
             return
@@ -406,14 +397,13 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
         if not is_strip_visible_at_frame(active_strip, current_frame):
             return False
 
-        # Don't show if modal crop mode is already active
         crop_state = get_crop_state()
         if crop_state['active']:
             return False
 
-        # Check if crop handles tool is active. A swallowed failure here would
-        # hide the whole tool - handles that never appear, from a toolbar button
-        # that looks like it worked - so this deliberately has no catch.
+        # Is the crop handles tool the active one? A swallowed failure here
+        # would hide the whole tool - handles that never appear, from a toolbar
+        # button that looks like it worked - so this has no catch.
         workspace = getattr(bpy.context, 'workspace', None)
         if workspace is not None:
             for tool in workspace.tools:
@@ -473,7 +463,7 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
         # WARNING: no blanket except around this. A swallowed failure leaves
         # every handle on the matrix_basis it was last given - positions that
         # still look right, on a strip whose geometry has moved - and dragging
-        # one then edits a crop field that no longer matches where it is drawn.
+        # one then edits a crop field that does not match where it is drawn.
         corners, (pivot_x, pivot_y), (scale_x, scale_y, flip_x, flip_y) = \
             get_strip_geometry_with_flip_support(active_strip, scene)
         edge_midpoints = get_edge_midpoints(corners)
@@ -482,7 +472,6 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
         res_y = scene.render.resolution_y
         view2d = region.view2d
 
-        # Convert corners to screen coordinates for rotation calculation
         screen_corners = [
             Vector(res_to_screen(c.x, c.y, res_x, res_y, view2d))
             for c in corners
@@ -519,7 +508,7 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
         self.gizmos[8].hide = False
 
     def draw_prepare(self, context: bpy.types.Context):
-        """Prepare for drawing."""
+        """Reposition the handles before Blender draws them."""
         self.refresh(context)
 
 
@@ -529,8 +518,8 @@ def register_crop_handles_gizmo():
     bpy.utils.register_class(EASYCROP_GGT_crop_handles)
 
     # The group is also linked by the tool's bl_widget, and its poll() gates on
-    # the tool being active, so this is belt and braces rather than what makes
-    # the handles appear. There is no window manager in background mode.
+    # the tool being active, so this is redundant insurance rather than what
+    # makes the handles appear. There is no window manager in background mode.
     wm = getattr(bpy.context, "window_manager", None)
     if wm is not None:
         wm.gizmo_group_type_ensure(EASYCROP_GGT_crop_handles.bl_idname)

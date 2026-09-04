@@ -101,11 +101,9 @@ class EASYCROP_OT_crop(bpy.types.Operator):
             self.report({'INFO'}, "No suitable strip for cropping")
             return {'CANCELLED'}
 
-        # Initialize operator state
         self.active_corner = -1
-        # The cursor the next delta is measured from, and the crop this drag
-        # has accepted so far. crop_start is kept separate because ESC restores
-        # to it - see _update_crop for why the drag cannot accumulate onto it.
+        # The cursor the next delta is measured from, and the crop this drag has
+        # accepted so far. crop_start stays separate because ESC restores to it.
         self.mouse_last = (0.0, 0.0)
         self.crop_start = (0.0, 0.0, 0.0, 0.0)
         self.crop_current = (0.0, 0.0, 0.0, 0.0)
@@ -114,7 +112,6 @@ class EASYCROP_OT_crop(bpy.types.Operator):
         # finish() consults it, because a session can end mid-drag.
         self.cursor_hidden = False
 
-        # Store the current transform overlay state
         self.prev_show_gizmo = None
         if context.space_data:
             self.prev_show_gizmo = context.space_data.show_gizmo
@@ -132,7 +129,6 @@ class EASYCROP_OT_crop(bpy.types.Operator):
         set_crop_active(True)
         set_draw_data({'active_corner': -1})
 
-        # Store initial crop values
         if strip and hasattr(strip, 'crop') and strip.crop:
             crop_data = strip.crop
             self.crop_start = (float(crop_data.min_x), float(crop_data.max_x),
@@ -141,7 +137,6 @@ class EASYCROP_OT_crop(bpy.types.Operator):
             self.crop_start = (0.0, 0.0, 0.0, 0.0)
         self.crop_current = self.crop_start
 
-        # Set up drawing handler
         handler = bpy.types.SpaceSequenceEditor.draw_handler_add(
             draw_crop_handles, (), 'PREVIEW', 'POST_PIXEL')
         set_draw_handle(handler)
@@ -256,7 +251,6 @@ class EASYCROP_OT_crop(bpy.types.Operator):
             return {'PASS_THROUGH'}
 
         elif event.value == 'PRESS':
-            # Check if this key is bound to a transform operator
             transform_op = self._find_transform_operator(context, event)
             if transform_op:
                 self.finish(context)
@@ -316,14 +310,10 @@ class EASYCROP_OT_crop(bpy.types.Operator):
     def _hide_cursor(self, context):
         """Hide the pointer for the duration of a handle drag.
 
-        The crop can refuse a move - a value cannot go negative, and the two
-        crops on an axis cannot meet - and the drag accumulates per-event
-        deltas rather than reading the cursor's absolute position, so once a
-        handle is held against a limit the pointer carries on and the handle
-        does not. Left visible, the pointer sits somewhere the handle is not
-        while still driving it, which reads as the control having come loose.
-        Hiding it removes the thing that disagrees; _restore_cursor puts the
-        pointer back on the handle so it does not reappear where it wandered.
+        The crop can refuse a move, and the drag accumulates per-event deltas
+        rather than reading the cursor's absolute position, so a handle held
+        against a limit stops while the pointer carries on. Left visible, the
+        pointer would sit somewhere the handle is not while still driving it.
 
         WARNING: only _restore_cursor undoes this, and every path out of a drag
         has to reach it - finish() calls it too, for the session that ends
@@ -339,13 +329,13 @@ class EASYCROP_OT_crop(bpy.types.Operator):
         """Show the pointer again, on the handle if we know which one it was.
 
         handle_index is the handle the drag was on, or -1 to just show the
-        pointer where it lies. The warp is what stops it reappearing across the
-        preview from the handle after a drag that spent time against a limit.
+        pointer where it lies. The warp stops it reappearing across the preview
+        from the handle after a drag that spent time against a limit.
 
-        Unlike the gizmo's _warp_cursor_to_handle this warps inline rather than
-        on a timer. The gizmo has to defer because use_grab_cursor makes Blender
-        restore the pointer itself after exit() returns, overwriting an inline
-        warp; this operator never grabs the cursor, so nothing is competing.
+        The warp is inline, where the gizmo's _warp_cursor_to_handle defers on a
+        timer: that one has use_grab_cursor set, so Blender restores the pointer
+        itself after exit() returns and overwrites an inline warp. This operator
+        never grabs the cursor, so nothing is competing.
         """
         if not self.cursor_hidden or not context.window:
             return
@@ -363,10 +353,9 @@ class EASYCROP_OT_crop(bpy.types.Operator):
     def _get_corner_at_mouse(self, context, event):
         """The handle nearest the cursor within SELECT_RADIUS, or -1.
 
-        Nearest rather than first: at a grab radius of 25px the corners and the
-        edge midpoints of a crop rect narrower than 100px on screen sit inside
-        each other's radius, and taking the first match would hand every such
-        click to a corner whatever the user aimed at.
+        Nearest rather than first: at a 25px grab radius the corners and edge
+        midpoints of a crop rect narrower than 100px on screen sit inside each
+        other's radius, and first-match would hand every such click to a corner.
         """
         mouse_pos = Vector((event.mouse_region_x, event.mouse_region_y))
         corners, midpoints = self._get_crop_corners(context)
@@ -416,9 +405,6 @@ class EASYCROP_OT_crop(bpy.types.Operator):
         undo step is not this method's problem: unlike the gizmo, this operator
         carries bl_options {'REGISTER', 'UNDO'} and Blender pushes one when the
         modal finishes, so the keys inserted here land inside it.
-
-        Why it is needed at all: writing strip.crop through RNA never triggers
-        auto-keying, whatever the toggle says.
         """
         if self.active_corner < 0:
             return
@@ -441,11 +427,8 @@ class EASYCROP_OT_crop(bpy.types.Operator):
         if not strip or not hasattr(strip, 'crop') or not strip.crop:
             return
 
-        # Movement since the previous event, not since the grab. Accumulating
-        # onto the last accepted crop is what stops a crop held against a limit
-        # from stranding the cursor out in the disallowed region, with every
-        # pixel of that invisible travel to be dragged back before the edge
-        # moves again. apply_crop_changes has the rest of the contract.
+        # Movement since the previous event, not since the grab -
+        # apply_crop_changes has the accumulation contract.
         dx = event.mouse_region_x - self.mouse_last[0]
         dy = event.mouse_region_y - self.mouse_last[1]
         self.mouse_last = (event.mouse_region_x, event.mouse_region_y)
@@ -501,10 +484,9 @@ class EASYCROP_OT_crop(bpy.types.Operator):
         WARNING: the crop filter is load-bearing, not tidiness. A strip with no
         crop also has no transform, and get_strip_geometry_with_flip_support
         guards neither, so an unfiltered sound strip raises AttributeError out
-        of a click test. Guarding the geometry instead of filtering here is the
-        wrong repair: that hands such a strip the whole render rectangle, and a
-        sound strip on a higher channel then swallows every click-through test
-        and ends the crop with nothing to report.
+        of a click test. Guarding the geometry instead is the wrong repair: that
+        hands such a strip the whole render rectangle, and a sound strip on a
+        higher channel then swallows every click-through test.
         """
         scene = context.scene
         if not scene.sequence_editor:

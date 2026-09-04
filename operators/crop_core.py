@@ -2,8 +2,8 @@
 BL Easy Crop - Core functionality and state management
 
 The one source of strip geometry and crop maths. Both interfaces - the gizmo
-tool and the modal operator - go through here, which is what stops them
-disagreeing about where a handle belongs on a flipped or rotated strip.
+tool and the modal operator - go through here, so they cannot disagree about
+where a handle belongs on a flipped or rotated strip.
 """
 
 import bpy
@@ -13,23 +13,21 @@ from mathutils import Vector
 # Blender 5.0 renamed sequences -> strips throughout the API
 _USE_STRIPS_API = bpy.app.version >= (5, 0, 0)
 
-# Region pixels. A handle is drawn small enough not to hide the corner it
-# marks, and grabbed from a good deal further out than it is drawn.
+# Region pixels: how large a handle is drawn, and how far out it can be
+# grabbed from.
 #
-# WARNING: one grab radius, shared. The gizmo tool gets its highlight from the
-# same test_select that decides the grab, so the two cannot disagree there; the
-# modal operator hit-tests and highlights in Python, so it has to be held to the
-# same number by hand. A hover radius wider than the grab radius leaves a ring
-# where a handle is lit and a click misses it.
+# WARNING: one grab radius for both interfaces, and the modal operator has to
+# be held to it by hand - it hit-tests and highlights in Python, where the
+# gizmo tool takes its highlight from the same test_select that decides the
+# grab. A hover radius wider than the grab radius leaves a ring where a handle
+# is lit and a click misses it.
 HANDLE_RADIUS = 6.0
 SELECT_RADIUS = 25.0
 
-# The handle palette. White for a handle at rest, orange for the one under the
-# pointer or being dragged.
+# The handle palette: white at rest, orange under the pointer or being dragged.
 #
-# WARNING: one palette for both interfaces. The gizmo tool and the modal
-# operator draw the same handles, so a value changed here and not there shows
-# up as a step between them at the instant a drag starts.
+# WARNING: both interfaces draw from these. A copy kept in a draw path shows up
+# as a step in color at the instant a drag starts.
 HANDLE_COLOR = (1.0, 1.0, 1.0, 0.8)
 ACCENT_COLOR = (1.0, 0.5, 0.0, 1.0)
 
@@ -51,10 +49,9 @@ def get_selected_strips(context):
     """Get selected strips from context (compat for 4.4/5.0).
 
     Returns an empty tuple, never None. selected_strips is a context member
-    rather than a property on the scene: outside a sequencer area it is None on
-    Blender 5.x even with a sequence_editor present. Both operators' poll()
-    gates on the sequence_editor and then iterates this, so handing back None
-    makes poll raise TypeError instead of declining.
+    rather than a scene property: outside a sequencer area it is None on Blender
+    5.x even with a sequence_editor present, and a poll() that iterates it then
+    raises TypeError instead of declining.
     """
     strips = context.selected_strips if _USE_STRIPS_API else context.selected_sequences
     return strips if strips is not None else ()
@@ -77,11 +74,10 @@ def point_in_polygon(point, polygon):
         if y > min(p1y, p2y):
             if y <= max(p1y, p2y):
                 if x <= max(p1x, p2x):
-                    # The division is safe unguarded: reaching here requires
-                    # y > min(p1y, p2y) and y <= max(p1y, p2y), which no y
-                    # satisfies when p1y == p2y, so a horizontal edge never
-                    # gets this far. Do not add a `p1y != p2y` guard - it is
-                    # dead, and its else branch leaves xinters unbound.
+                    # Safe unguarded: reaching here needs y > min and
+                    # y <= max, which no y satisfies when p1y == p2y. A
+                    # `p1y != p2y` guard is dead, and its else branch leaves
+                    # xinters unbound.
                     xinters = (y - p1y) * (p2x - p1x) / (p2y - p1y) + p1x
                     if p1x == p2x or x <= xinters:
                         inside = not inside
@@ -110,11 +106,7 @@ def rotate_point(point, angle, origin=None):
 # --- Shared helper functions ---
 
 def get_strip_flip_state(strip):
-    """Get the Mirror X / Mirror Y state of a strip.
-
-    Returns:
-        tuple: (flip_x, flip_y) booleans
-    """
+    """Get the Mirror X / Mirror Y state of a strip as (flip_x, flip_y)."""
     return strip.use_flip_x, strip.use_flip_y
 
 
@@ -122,18 +114,17 @@ def get_strip_rotation(strip):
     """Get the rotation angle of a strip in radians (raw, without flip compensation).
 
     WARNING: strip.transform.rotation is the only source, and it is already in
-    radians. Do not add a fallback to a strip-level rotation attribute: the
-    obvious names are degrees elsewhere in Blender, and a wrongly converted
-    angle draws handles in confidently wrong places rather than raising.
+    radians. Do not add a fallback to a strip-level rotation attribute - the
+    obvious names are degrees elsewhere in Blender, and a wrong conversion
+    draws handles in confidently wrong places rather than raising.
     """
     return strip.transform.rotation
 
 
 def get_strip_dimensions(strip, scene):
-    """Get the original pixel dimensions of a strip.
+    """The strip's original pixel dimensions as (width, height).
 
-    Returns:
-        tuple: (width, height) in pixels
+    Falls back to the render resolution for a strip with no image elements.
     """
     strip_width = scene.render.resolution_x
     strip_height = scene.render.resolution_y
@@ -148,13 +139,9 @@ def get_strip_dimensions(strip, scene):
 
 
 def get_edge_midpoints(corners):
-    """Calculate edge midpoints from four corner positions.
+    """The four edge midpoints of a corner quad: left, top, right, bottom.
 
-    Args:
-        corners: List of 4 Vector corner positions (BL, TL, TR, BR)
-
-    Returns:
-        list: 4 Vector midpoint positions (left, top, right, bottom edges)
+    corners are the four Vector positions, in BL, TL, TR, BR order.
     """
     midpoints = []
     for i in range(4):
@@ -164,16 +151,7 @@ def get_edge_midpoints(corners):
 
 
 def res_to_screen(point_x, point_y, res_x, res_y, view2d):
-    """Convert resolution-space coordinates to screen-space via view2d.
-
-    Args:
-        point_x, point_y: Position in resolution space
-        res_x, res_y: Scene render resolution
-        view2d: The region's View2D
-
-    Returns:
-        tuple: (screen_x, screen_y) in region pixel coordinates
-    """
+    """Convert resolution-space coordinates to region pixels via view2d."""
     # Resolution space has its origin at the bottom-left of the frame; the
     # preview's View2D has its origin at the frame center.
     return view2d.view_to_region(
@@ -183,30 +161,20 @@ def res_to_screen(point_x, point_y, res_x, res_y, view2d):
 def handle_screen_angle(screen_corners):
     """The angle every crop handle is drawn at, from the quad's first edge.
 
-    Args:
-        screen_corners: the four corners in region pixels, BL TL TR BR.
-            Indexed, not attribute-accessed, so tuples and Vectors both work -
-            the three call sites do not agree on which they carry.
+    screen_corners is BL TL TR BR in region pixels, indexed rather than
+    attribute-accessed so tuples and Vectors both work. Returns radians, and
+    exactly 0 for an unrotated strip.
 
-    Returns:
-        float: radians, 0 for an unrotated strip
+    WARNING: one angle for all nine handles, and this is the only derivation -
+    both draw paths call it rather than work it out again.
 
-    WARNING: one angle for all nine handles, and this is the only derivation.
-    Both draw paths - the gizmo group's refresh() and the hand-drawn pass that
-    replaces it during a drag - call this rather than work it out again.
-
-    Giving each handle the angle of the edge it sits on is the tempting
-    variant, and it is wrong. A square is symmetric under 90 degrees so the
-    shape comes out identical, but draw_rotated_square cuts its square into
-    triangles by fixed vertex index, so the split diagonal turns with the
-    angle. Handles split the other way from the drag path are visibly
-    anti-aliased differently at the instant a drag starts.
-
-    Deriving it from transform.rotation instead is the other tempting variant,
-    and it needs the flip correction reapplied by hand. Measuring the edge on
-    screen needs neither the raw rotation nor the flip correction: the quad has
-    already had both applied to it. It also needs no zero threshold, because an
-    unrotated strip's first edge points exactly at +Y and this returns exactly 0.
+    Do not give each handle the angle of the edge it sits on. A square is
+    symmetric under 90 degrees so the shape comes out identical, but
+    draw_rotated_square cuts its square into triangles by fixed vertex index,
+    so the split diagonal turns with the angle, and handles split the other way
+    from the drag path are visibly anti-aliased differently. Do not derive the
+    angle from transform.rotation either: that needs the flip correction
+    reapplied by hand, where the on-screen quad already carries it.
     """
     edge_x = screen_corners[1][0] - screen_corners[0][0]
     edge_y = screen_corners[1][1] - screen_corners[0][1]
@@ -219,17 +187,11 @@ def handle_window_position(strip, scene, region, handle_index):
     handle_index is the flat numbering both interfaces hit-test with: 0-3 are
     the corners, 4-7 the edge midpoints. The geometry is read fresh rather than
     taken from the drag, so the answer is where the handle actually ended up
-    after the limits had their say.
+    after the limits had their say. Returns None if it is not available.
 
-    Returns:
-        tuple: (x, y) in window coordinates, or None if the geometry is not
-        available.
-
-    The result is clamped to the region. A handle can legitimately sit outside
-    it - zoom the preview in far enough and the crop rect leaves the view - and
-    putting the pointer down outside the editor is worse than putting it at the
-    edge nearest the handle. cursor_warp takes window coordinates, not region
-    ones, which is the easy half of this to get wrong.
+    The result is clamped to the region, because a handle can legitimately sit
+    outside it once the preview is zoomed in far enough. cursor_warp takes
+    window coordinates, not region ones.
     """
     if not strip or not hasattr(strip, 'crop') or not region or not region.view2d:
         return None
@@ -250,17 +212,9 @@ def handle_window_position(strip, scene, region, handle_index):
 
 
 def compute_crop_delta(dx_pixels, dy_pixels, view2d, strip):
-    """Convert a pixel-space drag delta into strip-image-space crop deltas.
+    """Convert a screen-pixel drag delta into strip-image-space crop deltas.
 
-    Args:
-        dx_pixels: Mouse drag delta X in pixels (screen space)
-        dy_pixels: Mouse drag delta Y in pixels (screen space)
-        view2d: The region's View2D for coordinate conversion
-        strip: The strip being cropped
-
-    Returns:
-        tuple: (dx_res, dy_res, flip_x, flip_y) where dx_res/dy_res are
-               deltas in strip image space, ready for apply_crop_changes().
+    Returns (dx_res, dy_res, flip_x, flip_y), ready for apply_crop_changes.
     """
     # Two points rather than one, so the view2d's zoom is measured rather than
     # assumed - region_to_view is affine, not linear.
@@ -309,20 +263,14 @@ def map_handle(handle_index, flip_x, flip_y):
     the handle drawn on the left edge of a flipped strip is the one that moves
     max_x. Corners and edges remap differently, hence the two tables.
 
-    WARNING: flip compensation happens exactly once, and this is where. Callers
-    pass the raw handle index and the strip's flip state and get back an index
-    into the unflipped layout; compensating again in the drawing or gizmo layer
-    double-applies it, which lands the handles correctly when both axes are
-    flipped and wrongly when only one is.
+    handle_index is 0-3 for corners (BL, TL, TR, BR) and 4-7 for edges (left,
+    top, right, bottom); the return is the equivalent index in the unflipped
+    layout.
 
-    Args:
-        handle_index: 0-3 for corners (BL, TL, TR, BR), 4-7 for edges
-            (left, top, right, bottom)
-        flip_x: Whether strip is flipped on X axis
-        flip_y: Whether strip is flipped on Y axis
-
-    Returns:
-        int: the equivalent handle index with flips resolved
+    WARNING: flip compensation happens exactly once, and this is where.
+    Compensating again in the drawing or gizmo layer double-applies it, which
+    lands the handles correctly when both axes are flipped and wrongly when
+    only one is.
     """
     if handle_index < 4:
         if flip_x and flip_y:
@@ -357,22 +305,19 @@ def crop_props_for_handle(handle_index, flip_x, flip_y):
 def autokey_crop(context, strip, handle_index, flip_x, flip_y):
     """Insert keyframes for the crop channels this drag moved, if auto-key is on.
 
-    Auto-keying is not a property-level hook - it is something operators
-    invoke - so writing strip.crop through RNA inserts nothing on its own, no
-    matter what the toggle says. Any drag that wants to honor the setting has
-    to key for itself.
+    Writing strip.crop through RNA inserts nothing on its own whatever the
+    toggle says - auto-keying is something operators invoke - so a drag that
+    wants to honor the setting has to key for itself. Call this before
+    ed.undo_push, so the keys land in the same undo step as the edit.
 
     WARNING: read the flag from context.tool_settings, never from a scene
     looked up by hand. tool_settings is per-scene, the UI toggle writes the
     *window* scene's copy, and since 5.0 that need not be the scene the
     sequencer is showing. Reading the wrong one fails silently.
 
-    WARNING: key only the channels the handle moved. Keying all four is the
-    tempting simplification and it silently commits channels the user never
-    touched, which they then have to find and delete.
-
-    Call this before ed.undo_push, so the keys land in the same undo step as
-    the edit.
+    WARNING: key only the channels the handle moved. Keying all four silently
+    commits channels the user never touched, which they then have to find and
+    delete.
     """
     tool_settings = getattr(context, "tool_settings", None)
     if tool_settings is None or not tool_settings.use_keyframe_insert_auto:
@@ -385,12 +330,10 @@ def autokey_crop(context, strip, handle_index, flip_x, flip_y):
     return keyed
 
 
-# Which crop field each handle moves, and in which direction.
-#
-# Fields are indexed into the (min_x, max_x, min_y, max_y) tuple used
-# throughout this module. A corner moves one field per axis; an edge moves one
-# field and leaves the other axis alone. Dragging right (+dx) grows min_x but
-# shrinks max_x, hence the signs.
+# Which crop field each handle moves, and in which direction. Fields index the
+# (min_x, max_x, min_y, max_y) tuple used throughout this module. A corner
+# moves one field per axis; an edge moves one and leaves the other axis alone.
+# Dragging right (+dx) grows min_x but shrinks max_x, hence the signs.
 #
 #   index: (x_field, x_sign) or None, (y_field, y_sign) or None
 _HANDLE_FIELDS = {
@@ -415,47 +358,27 @@ def apply_crop_changes(handle_index, strip, dx_res, dy_res, crop_base,
 
     WARNING: crop_base is the crop this drag last *accepted*, not the crop the
     drag started from, and dx_res/dy_res are the movement since the previous
-    mouse event, not since the drag began. Feed the return value back in as
-    crop_base on the next event.
+    mouse event. Feed the return value back in as crop_base on the next event.
 
-    Two limits constrain the move: crop values cannot go negative, and the two
-    crops on an axis cannot meet. Neither is enforced by RNA - the sidebar will
-    happily set min_x + max_x past the strip width - so both live here.
+    Two limits constrain the move: a crop value cannot go negative, and the two
+    crops on an axis cannot meet. RNA enforces neither - the sidebar will set
+    min_x + max_x past the strip width - so both live here.
 
-    A blocked move is projected to the nearest allowed value, never refused.
-    Refusing strands the user: the crop stops while the cursor travels on, and
-    every pixel of that invisible travel has to be dragged back before the edge
-    moves again. Accumulating onto the last accepted value, and projecting
-    rather than dropping the move, means the crop settles against the limit and
-    moves again on the first event heading back off it.
-
-    A crop that is already past the limit when the drag starts is the one case
-    projection alone gets wrong, because clamping would snap it a long way on
-    the first nudge. There the move is taken only if it improves matters, which
-    lets the handles walk out of a state the sidebar allows but dragging could
-    never have produced.
-
-    The two axes are accepted independently, so a drag running at a shallow
-    angle into a limit still slides along it instead of stopping dead.
+    A blocked move is projected onto the limit, never refused: refusing lets
+    the cursor travel on while the crop stops, and every pixel of that
+    invisible travel has to be dragged back before the edge moves again. A crop
+    already past the limit when the drag starts is the one case projection gets
+    wrong, so there the move is taken only if it improves matters. The two axes
+    are accepted independently, so a drag running at a shallow angle into a
+    limit slides along it instead of stopping dead.
 
     crop_base carries floats even though strip.crop holds integers. Rounding
-    the running value every event would swallow any motion smaller than a
-    pixel, which stalls a slow drag completely; only the write is integral.
+    the running value every event would swallow motion smaller than a pixel,
+    which stalls a slow drag; only the write is integral.
 
-    Args:
-        handle_index: 0-3 for corners (BL, TL, TR, BR), 4-7 for edges
-            (left, top, right, bottom)
-        strip: The strip being cropped
-        dx_res: Delta X since the last event, in strip image space
-        dy_res: Delta Y since the last event, in strip image space
-        crop_base: Last accepted (min_x, max_x, min_y, max_y)
-        strip_width: Original strip width in pixels
-        strip_height: Original strip height in pixels
-        flip_x: Whether strip is flipped on X axis
-        flip_y: Whether strip is flipped on Y axis
-
-    Returns:
-        tuple: the accepted (min_x, max_x, min_y, max_y), as floats.
+    handle_index is 0-3 for corners (BL, TL, TR, BR) and 4-7 for edges (left,
+    top, right, bottom). Returns the accepted (min_x, max_x, min_y, max_y) as
+    floats.
     """
     x_move, y_move = _HANDLE_FIELDS[map_handle(handle_index, flip_x, flip_y)]
     accepted = list(crop_base)
@@ -470,24 +393,21 @@ def apply_crop_changes(handle_index, strip, dx_res, dy_res, crop_base,
         if candidate < 0.0:
             candidate = 0.0
 
-        # The largest value that still leaves a pixel between this crop and the
-        # one coming from the other side. Negative when the opposite crop has
-        # already eaten the whole strip on its own.
+        # The largest value that still leaves a pixel between this crop and
+        # the one coming from the other side.
         limit = extent - accepted[_OPPOSITE_FIELD[field]] - 1.0
 
         if candidate <= limit:
             accepted[field] = candidate
         elif accepted[field] > limit:
-            # Already past the limit - which the sidebar allows, since
-            # StripCrop enforces nothing. Take the move only if it is an
-            # improvement, so the handles can climb out of a state they could
-            # not have reached by dragging. Never clamp to limit here: that
-            # would snap the crop a long way on the first nudge.
+            # Already past the limit, which the sidebar allows. Take the move
+            # only if it is an improvement, so the handles can climb out of a
+            # state dragging could not have reached. Never clamp to limit
+            # here - that snaps the crop a long way on the first nudge.
             accepted[field] = min(candidate, accepted[field])
         else:
-            # Inside the valid range and pushing out of it. Stop against the
-            # limit rather than refusing the move, so the crop ends up where
-            # the drag was actually heading.
+            # Inside the valid range and pushing out of it: stop against the
+            # limit rather than refusing the move.
             accepted[field] = limit
 
     strip.crop.min_x = int(accepted[0])
@@ -501,15 +421,15 @@ def apply_crop_changes(handle_index, strip, dx_res, dy_res, crop_base,
 # --- Strip geometry ---
 
 def get_strip_geometry_with_flip_support(strip, scene):
-    """Calculate strip geometry accounting for Mirror X/Y checkboxes.
+    """Strip corner positions in resolution space, with Mirror X/Y applied.
 
-    Returns corner positions in resolution space.
+    Returns (corners, (pivot_x, pivot_y), (scale_x, scale_y, flip_x, flip_y)).
 
-    WARNING: the strip must be croppable. Every strip type with a crop also has
-    a transform, but a sound strip has neither, and guarding transform away
-    rather than filtering the caller gives such a strip the whole render
-    rectangle as its outline - a hit test that then matches every click in the
-    preview. Filter with hasattr(strip, 'crop') before calling.
+    WARNING: the strip must be croppable - filter with hasattr(strip, 'crop')
+    before calling. Every strip type with a crop also has a transform, but a
+    sound strip has neither, and guarding the transform away here rather than
+    filtering the caller gives such a strip the whole render rectangle as its
+    outline, which matches every click in the preview.
     """
     res_x = scene.render.resolution_x
     res_y = scene.render.resolution_y
@@ -584,7 +504,7 @@ def get_strip_geometry_with_flip_support(strip, scene):
 # --- State management functions ---
 
 def get_crop_state():
-    """Whether a modal crop is running.
+    """Whether a modal crop is running, as {'active': bool}.
 
     The gizmo tool's poll() and its draw handler both stand down while one is,
     so this is read on every redraw - keep it cheap.

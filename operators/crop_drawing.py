@@ -25,10 +25,8 @@ from .crop_core import (
 def draw_crop_symbol_at(center_x, center_y, color=HANDLE_COLOR):
     """Draw the crop symbol (L-brackets + inner rectangle) at a screen position.
 
-    Used by both modal operator drawing and gizmo drawing.
-
-    WARNING: sets its own blend state and puts back what it found. See
-    draw_rotated_square for why that belongs here and not in the callers.
+    Sets its own blend state and puts back what it found, for the reason
+    draw_rotated_square gives.
     """
     outer_size = 8
     inner_size = 5
@@ -67,7 +65,7 @@ def draw_crop_symbol_at(center_x, center_y, color=HANDLE_COLOR):
          (center_x - inner_size, center_y - inner_size)]
     ]
 
-    # Combine all line segments into a single batch for efficiency
+    # One batch for every segment.
     all_line_verts = []
     for line_verts in bracket_lines + inner_rect_lines:
         all_line_verts.extend(line_verts)
@@ -84,20 +82,13 @@ def draw_crop_symbol_at(center_x, center_y, color=HANDLE_COLOR):
 def draw_rotated_square(center_x, center_y, half_size, angle, color):
     """Draw a filled square at a screen position, optionally rotated.
 
-    Used by both modal operator drawing and gizmo drawing.
-
-    Args:
-        center_x, center_y: Screen position
-        half_size: Half the side length in pixels (HANDLE_RADIUS)
-        angle: Rotation angle in radians (already flip-compensated)
-        color: RGBA tuple
+    half_size is half the side length in pixels (HANDLE_RADIUS), angle is in
+    radians and already flip-compensated, color is RGBA.
 
     WARNING: this sets blend state and restores what it found, and that belongs
     here rather than in the callers. The three paths that draw handles are each
-    called from a different Blender pass - the gizmo tool's idle draw from the
-    gizmo pass, its drag draw and the modal operator's from POST_PIXEL draw
-    handlers - and a pass that does not happen to have alpha blending on renders
-    this square's color opaque.
+    called from a different Blender pass, and a pass that does not happen to
+    have alpha blending on renders this square's color opaque.
     """
     prev_blend = gpu.state.blend_get()
     gpu.state.blend_set('ALPHA')
@@ -144,7 +135,7 @@ def draw_rotated_square(center_x, center_y, half_size, angle, color):
 # --- Modal operator draw callback ---
 
 def draw_crop_handles():
-    """Main draw function for crop handles (called by modal operator's draw handler)."""
+    """Draw the modal operator's handles; installed as a PREVIEW draw handler."""
     crop_state = get_crop_state()
 
     if not crop_state['active']:
@@ -202,9 +193,8 @@ def draw_crop_handles():
     hover_corner = _get_hovered_corner(screen_corners, screen_midpoints,
                                        mouse_x, mouse_y)
 
-    # The same angle, from the same helper, that the gizmo tool's two draw
-    # paths use. Measuring the on-screen quad needs no flip correction: the
-    # quad has already had the mirroring applied to it.
+    # The same helper the gizmo tool's two draw paths use, so a handle cannot
+    # change appearance at the instant a drag starts.
     angle = handle_screen_angle(screen_corners)
 
     # Corners 0-3 then edge midpoints 4-7, the numbering apply_crop_changes uses.
@@ -218,9 +208,8 @@ def _get_hovered_corner(screen_corners, screen_midpoints, mouse_x, mouse_y):
     """The handle nearest the cursor within SELECT_RADIUS, or -1.
 
     WARNING: this must agree with _get_corner_at_mouse on both the radius and
-    the nearest-wins rule. It decides which handle lights up; that one decides
-    which handle a click grabs. Any difference between them lights one handle
-    and moves another.
+    the nearest-wins rule. This one decides which handle lights up, that one
+    which handle a click grabs, so any difference lights one and moves another.
     """
     best, best_distance = -1, SELECT_RADIUS
 
