@@ -19,7 +19,7 @@ from .crop_core import (
     get_strips, get_selected_strips,
     get_strip_dimensions, get_edge_midpoints, get_strip_flip_state,
     res_to_screen, compute_crop_delta, apply_crop_changes, autokey_crop,
-    SELECT_RADIUS
+    handle_window_position, SELECT_RADIUS
 )
 from .crop_drawing import draw_crop_handles
 
@@ -110,6 +110,9 @@ class EASYCROP_OT_crop(bpy.types.Operator):
         self.crop_start = (0.0, 0.0, 0.0, 0.0)
         self.crop_current = (0.0, 0.0, 0.0, 0.0)
         self.timer = None
+        # True between hiding the pointer for a drag and putting it back.
+        # finish() consults it, because a session can end mid-drag.
+        self.cursor_hidden = False
 
         # Store the current transform overlay state
         self.prev_show_gizmo = None
@@ -177,6 +180,7 @@ class EASYCROP_OT_crop(bpy.types.Operator):
                 draw_data['active_corner'] = corner
                 set_draw_data(draw_data)
                 self.mouse_last = (event.mouse_region_x, event.mouse_region_y)
+                self._hide_cursor(context)
 
                 if strip and hasattr(strip, 'crop') and strip.crop:
                     crop_data = strip.crop
@@ -208,6 +212,7 @@ class EASYCROP_OT_crop(bpy.types.Operator):
 
         elif event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
             self._autokey_if_changed(context, strip)
+            self._restore_cursor(context, self.active_corner)
             self.active_corner = -1
             draw_data['active_corner'] = -1
             set_draw_data(draw_data)
@@ -272,6 +277,10 @@ class EASYCROP_OT_crop(bpy.types.Operator):
         """
         set_crop_active(False)
 
+        # A session can end mid-drag - ESC, or a handover to another strip -
+        # and an unrestored pointer stays invisible for the rest of the session.
+        self._restore_cursor(context, -1)
+
         # None means invoke() found no show_gizmo to save, which is not the same
         # as having saved False.
         if self.prev_show_gizmo is not None and context.space_data:
@@ -301,6 +310,53 @@ class EASYCROP_OT_crop(bpy.types.Operator):
                         region.tag_redraw()
 
         return {'CANCELLED'} if cancelled else {'FINISHED'}
+
+    def _hide_cursor(self, context):
+        """Hide the pointer for the duration of a handle drag.
+
+        The crop can refuse a move - a value cannot go negative, and the two
+        crops on an axis cannot meet - and the drag accumulates per-event
+        deltas rather than reading the cursor's absolute position, so once a
+        handle is held against a limit the pointer carries on and the handle
+        does not. Left visible, the pointer sits somewhere the handle is not
+        while still driving it, which reads as the control having come loose.
+        Hiding it removes the thing that disagrees; _restore_cursor puts the
+        pointer back on the handle so it does not reappear where it wandered.
+
+        WARNING: only _restore_cursor undoes this, and every path out of a drag
+        has to reach it - finish() calls it too, for the session that ends
+        mid-drag. A missed restore leaves the pointer invisible for the rest of
+        the session, not just the crop.
+        """
+        if self.cursor_hidden or not context.window:
+            return
+        context.window.cursor_modal_set('NONE')
+        self.cursor_hidden = True
+
+    def _restore_cursor(self, context, handle_index):
+        """Show the pointer again, on the handle if we know which one it was.
+
+        handle_index is the handle the drag was on, or -1 to just show the
+        pointer where it lies. The warp is what stops it reappearing across the
+        preview from the handle after a drag that spent time against a limit.
+
+        Unlike the gizmo's _warp_cursor_to_handle this warps inline rather than
+        on a timer. The gizmo has to defer because use_grab_cursor makes Blender
+        restore the pointer itself after exit() returns, overwriting an inline
+        warp; this operator never grabs the cursor, so nothing is competing.
+        """
+        if not self.cursor_hidden or not context.window:
+            return
+
+        if handle_index >= 0:
+            position = handle_window_position(
+                context.scene.sequence_editor.active_strip,
+                context.scene, context.region, handle_index)
+            if position:
+                context.window.cursor_warp(*position)
+
+        context.window.cursor_modal_restore()
+        self.cursor_hidden = False
 
     def _get_corner_at_mouse(self, context, event):
         """The handle nearest the cursor within SELECT_RADIUS, or -1.

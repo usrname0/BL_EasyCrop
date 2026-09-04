@@ -14,7 +14,8 @@ from pathlib import Path
 
 BLENDER_ROOT = Path(r"C:\Program Files\Blender Foundation")
 VERSIONS = ["4.4", "4.5", "5.0", "5.1", "5.2"]
-TESTS = ["smoke.py", "test_crop.py", "test_commit.py", "test_hittest.py"]
+TESTS = ["smoke.py", "test_crop.py", "test_commit.py", "test_hittest.py",
+         "test_cursor.py"]
 
 HERE = Path(__file__).resolve().parent
 

@@ -165,6 +165,42 @@ def res_to_screen(point_x, point_y, res_x, res_y, view2d):
         point_x - res_x / 2, point_y - res_y / 2, clip=False)
 
 
+def handle_window_position(strip, scene, region, handle_index):
+    """Where a handle sits right now, in window pixels, for cursor_warp.
+
+    handle_index is the flat numbering both interfaces hit-test with: 0-3 are
+    the corners, 4-7 the edge midpoints. The geometry is read fresh rather than
+    taken from the drag, so the answer is where the handle actually ended up
+    after the limits had their say.
+
+    Returns:
+        tuple: (x, y) in window coordinates, or None if the geometry is not
+        available.
+
+    The result is clamped to the region. A handle can legitimately sit outside
+    it - zoom the preview in far enough and the crop rect leaves the view - and
+    putting the pointer down outside the editor is worse than putting it at the
+    edge nearest the handle. cursor_warp takes window coordinates, not region
+    ones, which is the easy half of this to get wrong.
+    """
+    if not strip or not hasattr(strip, 'crop') or not region or not region.view2d:
+        return None
+
+    corners, _, _ = get_strip_geometry_with_flip_support(strip, scene)
+    if handle_index < 4:
+        handle_pos = corners[handle_index]
+    else:
+        handle_pos = get_edge_midpoints(corners)[handle_index - 4]
+
+    screen_x, screen_y = res_to_screen(
+        handle_pos.x, handle_pos.y,
+        scene.render.resolution_x, scene.render.resolution_y, region.view2d)
+
+    x = min(max(int(screen_x), 0), max(region.width - 1, 0))
+    y = min(max(int(screen_y), 0), max(region.height - 1, 0))
+    return (region.x + x, region.y + y)
+
+
 def compute_crop_delta(dx_pixels, dy_pixels, view2d, strip):
     """Convert a pixel-space drag delta into strip-image-space crop deltas.
 

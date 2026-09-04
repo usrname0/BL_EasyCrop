@@ -21,7 +21,7 @@ from ..operators.crop_core import (
     get_strip_geometry_with_flip_support, get_strip_flip_state,
     get_strip_rotation, get_strip_dimensions, get_edge_midpoints,
     res_to_screen, compute_crop_delta, apply_crop_changes, autokey_crop,
-    HANDLE_RADIUS, SELECT_RADIUS
+    handle_window_position, HANDLE_RADIUS, SELECT_RADIUS
 )
 from ..operators.crop_drawing import draw_crop_symbol_at, draw_rotated_square
 
@@ -43,7 +43,6 @@ class EASYCROP_GT_crop_handle(Gizmo):
         # Keeps the handles drawn and taking events while a drag is running,
         # rather than only while the group is idle.
         self.use_draw_modal = True
-        self.use_draw_select = True
         self.use_event_handle_all = True
 
         self.use_select_background = False
@@ -59,7 +58,6 @@ class EASYCROP_GT_crop_handle(Gizmo):
         self.color_highlight = (1.0, 0.5, 0.0)
 
         self.scale_basis = HANDLE_RADIUS
-        self.select_id = 0
 
     def draw_prepare(self, context):
         """Prepare for drawing - ensure gizmo is visible."""
@@ -109,6 +107,13 @@ class EASYCROP_GT_crop_handle(Gizmo):
 
         WARNING: event is an (x, y) tuple here, not an Event. Blender passes
         region coordinates to a gizmo's test_select.
+
+        The return is RNA's intersect_id, whose only special value is -1, "skip
+        this gizmo". It indexes a part *within* one gizmo, and these have one
+        part each, so 0 is the whole vocabulary for a hit. Handing back a
+        per-handle id instead looked like it identified which handle was struck;
+        it never did - Blender asks each gizmo separately, and invoke() reads
+        handle_type and handle_index for that.
         """
         gizmo_pos = self.matrix_basis.translation
         mouse_pos = event
@@ -116,7 +121,7 @@ class EASYCROP_GT_crop_handle(Gizmo):
         distance = ((gizmo_pos.x - mouse_pos[0])**2 + (gizmo_pos.y - mouse_pos[1])**2)**0.5
 
         if distance <= SELECT_RADIUS:
-            return self.select_id
+            return 0
         else:
             return -1
 
@@ -305,26 +310,15 @@ class EASYCROP_GT_crop_handle(Gizmo):
         neither may be wrapped in a handler that could swallow a failure of the
         other - the cursor would stay invisible for the rest of the session.
         """
-        strip = context.scene.sequence_editor.active_strip
-        region = context.region
-        if not strip or not hasattr(strip, 'crop') or not region or not region.view2d:
+        # Flat 0-7 handle numbering: corners first, then the edge midpoints.
+        flat_index = (self.handle_index if self.handle_type == "corner"
+                      else self.handle_index + 4)
+        position = handle_window_position(
+            context.scene.sequence_editor.active_strip,
+            context.scene, context.region, flat_index)
+        if not position:
             return
-
-        corners, _, _ = get_strip_geometry_with_flip_support(strip, context.scene)
-        if self.handle_type == "corner":
-            final_handle_pos = corners[self.handle_index]
-        else:
-            next_i = (self.handle_index + 1) % 4
-            final_handle_pos = (corners[self.handle_index] + corners[next_i]) / 2
-
-        screen_co = res_to_screen(
-            final_handle_pos.x, final_handle_pos.y,
-            context.scene.render.resolution_x,
-            context.scene.render.resolution_y, region.view2d)
-
-        # Convert region coords to window coords for cursor_warp
-        final_x = region.x + int(screen_co[0])
-        final_y = region.y + int(screen_co[1])
+        final_x, final_y = position
 
         def deferred_cursor_warp():
             try:
@@ -459,39 +453,35 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
         self.gizmos[0..3] corners, [4..7] edges, [8] center, so nothing may be
         inserted or reordered here without changing it there too.
 
-        The four use_* flags repeat what EASYCROP_GT_crop_handle.setup() already
-        set on each gizmo. Which of the two Blender consults has not been
-        established, so both are left in place.
+        The use_* flags repeat what EASYCROP_GT_crop_handle.setup() already set
+        on each gizmo. Which of the two Blender consults has not been
+        established, so both are left in place. Note that the centre handle
+        deliberately gets fewer: it never drags, so use_draw_modal and
+        use_grab_cursor would have nothing to govern.
         """
         for i in range(4):
             gizmo = self.gizmos.new(EASYCROP_GT_crop_handle.bl_idname)
             gizmo.handle_type = "corner"
             gizmo.handle_index = i
-            gizmo.select_id = i
 
             gizmo.use_event_handle_all = True
             gizmo.use_draw_modal = True
             gizmo.use_grab_cursor = True
-            gizmo.use_draw_select = True
 
         for i in range(4):
             gizmo = self.gizmos.new(EASYCROP_GT_crop_handle.bl_idname)
             gizmo.handle_type = "edge"
             gizmo.handle_index = i
-            gizmo.select_id = i + 4
 
             gizmo.use_event_handle_all = True
             gizmo.use_draw_modal = True
             gizmo.use_grab_cursor = True
-            gizmo.use_draw_select = True
 
         gizmo = self.gizmos.new(EASYCROP_GT_crop_handle.bl_idname)
         gizmo.handle_type = "center"
         gizmo.handle_index = 0
-        gizmo.select_id = 8
 
         gizmo.use_event_handle_all = True
-        gizmo.use_draw_select = True
 
     def refresh(self, context):
         """Put each handle where the strip's current crop says it belongs."""

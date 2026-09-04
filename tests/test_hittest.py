@@ -51,12 +51,13 @@ import wave
 from pathlib import Path
 
 import bpy
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
 WORKSPACE = str(Path(__file__).resolve().parents[2])
 if WORKSPACE not in sys.path:
     sys.path.insert(0, WORKSPACE)
 
+from BL_EasyCrop.gizmos.crop_handles_gizmo import EASYCROP_GT_crop_handle  # noqa: E402
 from BL_EasyCrop.operators.crop_core import (  # noqa: E402
     get_strip_geometry_with_flip_support, get_strip_rotation, SELECT_RADIUS)
 from BL_EasyCrop.operators.crop_drawing import _get_hovered_corner  # noqa: E402
@@ -245,8 +246,52 @@ def test_nearest_handle_wins():
     check("hover on the top-left corner", hover_at(handles, 500, 560), 1)
 
 
+class FakeGizmo:
+    """Stands in for a handle gizmo. test_select reads only matrix_basis."""
+
+    def __init__(self, x, y):
+        self.matrix_basis = Matrix.Translation((x, y, 0))
+
+
+def test_gizmo_test_select_answers_hit_or_skip():
+    """RNA calls the return intersect_id, and -1 is its only special value.
+
+    It indexes a part *within* one gizmo, and these have one part each, so 0 is
+    the whole vocabulary for a hit. Until 2026-09-04 each handle returned its
+    own 0-8 id, which looked like it told Blender which handle was struck. It
+    never did - Blender asks each gizmo separately, and invoke() reads
+    handle_type/handle_index. The ids came from a `select_id` attribute that is
+    not a Gizmo property at all, so nothing but this return ever read it.
+
+    Pinned because the center handle returned 8, and any future edit that
+    reintroduces a per-handle id puts an out-of-range part index back into
+    Blender's hands for a gizmo that has one part.
+    """
+    gizmo = FakeGizmo(500, 500)
+    call = EASYCROP_GT_crop_handle.test_select
+
+    check("dead centre is a hit", call(gizmo, None, (500, 500)), 0)
+    check("just inside the radius is a hit",
+          call(gizmo, None, (500 + int(SELECT_RADIUS) - 1, 500)), 0)
+    check("well outside is a skip",
+          call(gizmo, None, (500 + int(SELECT_RADIUS) * 3, 500)), -1)
+
+
+def test_gizmo_hit_radius_matches_the_shared_constant():
+    """The gizmo grabs at SELECT_RADIUS, the same number the modal pair uses."""
+    gizmo = FakeGizmo(0, 0)
+    call = EASYCROP_GT_crop_handle.test_select
+
+    inside = call(gizmo, None, (int(SELECT_RADIUS) - 1, 0))
+    outside = call(gizmo, None, (int(SELECT_RADIUS) + 2, 0))
+    check("inside the shared radius", inside, 0)
+    check("outside the shared radius", outside, -1)
+
+
 TESTS = (
     test_croppable_only_reaches_the_hit_test,
+    test_gizmo_test_select_answers_hit_or_skip,
+    test_gizmo_hit_radius_matches_the_shared_constant,
     test_geometry_refuses_a_strip_with_no_crop,
     test_hover_and_grab_agree,
     test_hover_and_grab_share_the_radius,
