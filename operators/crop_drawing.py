@@ -16,7 +16,7 @@ from gpu_extras.batch import batch_for_shader
 from .crop_core import (
     get_crop_state, get_draw_data,
     get_strip_geometry_with_flip_support, get_strip_rotation,
-    get_strip_flip_state, get_edge_midpoints, is_strip_visible_at_frame,
+    get_edge_midpoints, is_strip_visible_at_frame,
     res_to_screen
 )
 

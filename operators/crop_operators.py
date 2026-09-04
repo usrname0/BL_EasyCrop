@@ -97,8 +97,12 @@ class EASYCROP_OT_crop(bpy.types.Operator):
 
         # Initialize operator state
         self.active_corner = -1
-        self.mouse_start = (0.0, 0.0)
+        # The cursor the next delta is measured from, and the crop this drag
+        # has accepted so far. crop_start is kept separate because ESC restores
+        # to it - see _update_crop for why the drag cannot accumulate onto it.
+        self.mouse_last = (0.0, 0.0)
         self.crop_start = (0.0, 0.0, 0.0, 0.0)
+        self.crop_current = (0.0, 0.0, 0.0, 0.0)
         self.timer = None
 
         # Store the current transform overlay state
@@ -121,9 +125,11 @@ class EASYCROP_OT_crop(bpy.types.Operator):
         # Store initial crop values
         if strip and hasattr(strip, 'crop') and strip.crop:
             crop_data = strip.crop
-            self.crop_start = (crop_data.min_x, crop_data.max_x, crop_data.min_y, crop_data.max_y)
+            self.crop_start = (float(crop_data.min_x), float(crop_data.max_x),
+                               float(crop_data.min_y), float(crop_data.max_y))
         else:
-            self.crop_start = (0, 0, 0, 0)
+            self.crop_start = (0.0, 0.0, 0.0, 0.0)
+        self.crop_current = self.crop_start
 
         # Set up drawing handler
         handler = bpy.types.SpaceSequenceEditor.draw_handler_add(
@@ -163,14 +169,15 @@ class EASYCROP_OT_crop(bpy.types.Operator):
                 self.active_corner = corner
                 draw_data['active_corner'] = corner
                 set_draw_data(draw_data)
-                self.mouse_start = (event.mouse_region_x, event.mouse_region_y)
+                self.mouse_last = (event.mouse_region_x, event.mouse_region_y)
 
                 if strip and hasattr(strip, 'crop') and strip.crop:
                     crop_data = strip.crop
-                    self.crop_start = (crop_data.min_x, crop_data.max_x,
-                                       crop_data.min_y, crop_data.max_y)
+                    self.crop_start = (float(crop_data.min_x), float(crop_data.max_x),
+                                       float(crop_data.min_y), float(crop_data.max_y))
                 else:
-                    self.crop_start = (0, 0, 0, 0)
+                    self.crop_start = (0.0, 0.0, 0.0, 0.0)
+                self.crop_current = self.crop_start
             else:
                 mouse_pos = Vector((event.mouse_region_x, event.mouse_region_y))
                 strips = self._get_visible_strips(context)
@@ -224,7 +231,8 @@ class EASYCROP_OT_crop(bpy.types.Operator):
                 crop_data.max_x = 0
                 crop_data.min_y = 0
                 crop_data.max_y = 0
-                self.crop_start = (0, 0, 0, 0)
+                self.crop_start = (0.0, 0.0, 0.0, 0.0)
+                self.crop_current = self.crop_start
                 for area in context.screen.areas:
                     if area.type == 'SEQUENCE_EDITOR':
                         area.tag_redraw()
@@ -331,14 +339,22 @@ class EASYCROP_OT_crop(bpy.types.Operator):
         if not strip or not hasattr(strip, 'crop') or not strip.crop:
             return
 
-        dx = event.mouse_region_x - self.mouse_start[0]
-        dy = event.mouse_region_y - self.mouse_start[1]
+        # Movement since the previous event, not since the grab. Accumulating
+        # onto the last accepted crop is what stops a crop held against a limit
+        # from stranding the cursor out in the disallowed region, with every
+        # pixel of that invisible travel to be dragged back before the edge
+        # moves again. See ../BLENDER.md -> "A constrained drag must accumulate
+        # deltas", and apply_crop_changes.
+        dx = event.mouse_region_x - self.mouse_last[0]
+        dy = event.mouse_region_y - self.mouse_last[1]
+        self.mouse_last = (event.mouse_region_x, event.mouse_region_y)
 
         dx_res, dy_res, flip_x, flip_y = compute_crop_delta(
             dx, dy, context.region.view2d, strip)
         strip_width, strip_height = get_strip_dimensions(strip, context.scene)
-        apply_crop_changes(self.active_corner, strip, dx_res, dy_res,
-                           self.crop_start, strip_width, strip_height, flip_x, flip_y)
+        self.crop_current = apply_crop_changes(
+            self.active_corner, strip, dx_res, dy_res,
+            self.crop_current, strip_width, strip_height, flip_x, flip_y)
 
     def _find_transform_operator(self, context, event):
         """Find if the pressed key is bound to a transform operator.

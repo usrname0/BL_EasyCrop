@@ -210,94 +210,139 @@ def compute_crop_delta(dx_pixels, dy_pixels, view2d, strip):
     return dx_res, dy_res, flip_x, flip_y
 
 
-def apply_crop_changes(handle_index, strip, dx_res, dy_res, crop_start,
+# Which crop field each handle moves, and in which direction.
+#
+# Fields are indexed into the (min_x, max_x, min_y, max_y) tuple used
+# throughout this module. A corner moves one field per axis; an edge moves one
+# field and leaves the other axis alone. Dragging right (+dx) grows min_x but
+# shrinks max_x, hence the signs.
+#
+#   index: (x_field, x_sign) or None, (y_field, y_sign) or None
+_HANDLE_FIELDS = {
+    0: ((0, 1.0), (2, 1.0)),    # corner bottom-left
+    1: ((0, 1.0), (3, -1.0)),   # corner top-left
+    2: ((1, -1.0), (3, -1.0)),  # corner top-right
+    3: ((1, -1.0), (2, 1.0)),   # corner bottom-right
+    4: ((0, 1.0), None),        # edge left
+    5: (None, (3, -1.0)),       # edge top
+    6: ((1, -1.0), None),       # edge right
+    7: (None, (2, 1.0)),        # edge bottom
+}
+
+# The field on the same axis that the handle is not moving, whose value the
+# opposite-edge collision test has to add in.
+_OPPOSITE_FIELD = {0: 1, 1: 0, 2: 3, 3: 2}
+
+
+def apply_crop_changes(handle_index, strip, dx_res, dy_res, crop_base,
                        strip_width, strip_height, flip_x, flip_y):
-    """Apply crop changes based on handle drag.
+    """Accumulate one event's drag delta onto crop_base, write it, return it.
+
+    WARNING: crop_base is the crop this drag last *accepted*, not the crop the
+    drag started from, and dx_res/dy_res are the movement since the previous
+    mouse event, not since the drag began. Feed the return value back in as
+    crop_base on the next event.
+
+    Two limits constrain the move: crop values cannot go negative, and the two
+    crops on an axis cannot meet. Neither is enforced by RNA - the sidebar will
+    happily set min_x + max_x past the strip width - so both live here.
+
+    A blocked move is projected to the nearest allowed value, never refused.
+    Refusing strands the user: the crop stops while the cursor travels on, and
+    every pixel of that invisible travel has to be dragged back before the edge
+    moves again. Accumulating onto the last accepted value, and projecting
+    rather than dropping the move, means the crop settles against the limit and
+    moves again on the first event heading back off it. See ../BLENDER.md ->
+    "A constrained drag must accumulate deltas".
+
+    A crop that is already past the limit when the drag starts is the one case
+    projection alone gets wrong, because clamping would snap it a long way on
+    the first nudge. There the move is taken only if it improves matters, which
+    lets the handles walk out of a state the sidebar allows but dragging could
+    never have produced.
+
+    The two axes are accepted independently, so a drag running at a shallow
+    angle into a limit still slides along it instead of stopping dead.
+
+    crop_base carries floats even though strip.crop holds integers. Rounding
+    the running value every event would swallow any motion smaller than a
+    pixel, which stalls a slow drag completely; only the write is integral.
 
     Args:
-        handle_index: 0-3 for corners (BL, TL, TR, BR), 4-7 for edges (left, top, right, bottom)
+        handle_index: 0-3 for corners (BL, TL, TR, BR), 4-7 for edges
+            (left, top, right, bottom)
         strip: The strip being cropped
-        dx_res: Delta X in strip image space
-        dy_res: Delta Y in strip image space
-        crop_start: Tuple of initial crop values (min_x, max_x, min_y, max_y)
+        dx_res: Delta X since the last event, in strip image space
+        dy_res: Delta Y since the last event, in strip image space
+        crop_base: Last accepted (min_x, max_x, min_y, max_y)
         strip_width: Original strip width in pixels
         strip_height: Original strip height in pixels
         flip_x: Whether strip is flipped on X axis
         flip_y: Whether strip is flipped on Y axis
+
+    Returns:
+        tuple: the accepted (min_x, max_x, min_y, max_y), as floats.
     """
     if handle_index < 4:
         # Corner handles - remap based on flips
-        corner_map = handle_index
-
+        mapped = handle_index
         if flip_x and flip_y:
-            corner_map = {0: 2, 1: 3, 2: 0, 3: 1}[handle_index]
+            mapped = {0: 2, 1: 3, 2: 0, 3: 1}[handle_index]
         elif flip_x:
-            corner_map = {0: 3, 1: 2, 2: 1, 3: 0}[handle_index]
+            mapped = {0: 3, 1: 2, 2: 1, 3: 0}[handle_index]
         elif flip_y:
-            corner_map = {0: 1, 1: 0, 2: 3, 3: 2}[handle_index]
-
-        if corner_map == 0:  # Bottom-left
-            new_min_x = int(max(0, crop_start[0] + dx_res))
-            if new_min_x + strip.crop.max_x < strip_width:
-                strip.crop.min_x = new_min_x
-            new_min_y = int(max(0, crop_start[2] + dy_res))
-            if new_min_y + strip.crop.max_y < strip_height:
-                strip.crop.min_y = new_min_y
-
-        elif corner_map == 1:  # Top-left
-            new_min_x = int(max(0, crop_start[0] + dx_res))
-            if new_min_x + strip.crop.max_x < strip_width:
-                strip.crop.min_x = new_min_x
-            new_max_y = int(max(0, crop_start[3] - dy_res))
-            if strip.crop.min_y + new_max_y < strip_height:
-                strip.crop.max_y = new_max_y
-
-        elif corner_map == 2:  # Top-right
-            new_max_x = int(max(0, crop_start[1] - dx_res))
-            if strip.crop.min_x + new_max_x < strip_width:
-                strip.crop.max_x = new_max_x
-            new_max_y = int(max(0, crop_start[3] - dy_res))
-            if strip.crop.min_y + new_max_y < strip_height:
-                strip.crop.max_y = new_max_y
-
-        elif corner_map == 3:  # Bottom-right
-            new_max_x = int(max(0, crop_start[1] - dx_res))
-            if strip.crop.min_x + new_max_x < strip_width:
-                strip.crop.max_x = new_max_x
-            new_min_y = int(max(0, crop_start[2] + dy_res))
-            if new_min_y + strip.crop.max_y < strip_height:
-                strip.crop.min_y = new_min_y
+            mapped = {0: 1, 1: 0, 2: 3, 3: 2}[handle_index]
     else:
         # Edge handles - remap based on flips
         edge_index = handle_index - 4
         edge_map = edge_index
-
         if flip_x and flip_y:
             edge_map = {0: 2, 1: 3, 2: 0, 3: 1}[edge_index]
         elif flip_x:
             edge_map = {0: 2, 1: 1, 2: 0, 3: 3}[edge_index]
         elif flip_y:
             edge_map = {0: 0, 1: 3, 2: 2, 3: 1}[edge_index]
+        mapped = edge_map + 4
 
-        if edge_map == 0:  # Left edge
-            new_min_x = int(max(0, crop_start[0] + dx_res))
-            if new_min_x + strip.crop.max_x < strip_width:
-                strip.crop.min_x = new_min_x
+    x_move, y_move = _HANDLE_FIELDS[mapped]
+    accepted = list(crop_base)
 
-        elif edge_map == 1:  # Top edge
-            new_max_y = int(max(0, crop_start[3] - dy_res))
-            if strip.crop.min_y + new_max_y < strip_height:
-                strip.crop.max_y = new_max_y
+    for move, delta, extent in ((x_move, dx_res, strip_width),
+                                (y_move, dy_res, strip_height)):
+        if move is None:
+            continue
+        field, sign = move
+        candidate = accepted[field] + sign * delta
+        # Cannot crop past the edge it started from.
+        if candidate < 0.0:
+            candidate = 0.0
 
-        elif edge_map == 2:  # Right edge
-            new_max_x = int(max(0, crop_start[1] - dx_res))
-            if strip.crop.min_x + new_max_x < strip_width:
-                strip.crop.max_x = new_max_x
+        # The largest value that still leaves a pixel between this crop and the
+        # one coming from the other side. Negative when the opposite crop has
+        # already eaten the whole strip on its own.
+        limit = extent - accepted[_OPPOSITE_FIELD[field]] - 1.0
 
-        elif edge_map == 3:  # Bottom edge
-            new_min_y = int(max(0, crop_start[2] + dy_res))
-            if new_min_y + strip.crop.max_y < strip_height:
-                strip.crop.min_y = new_min_y
+        if candidate <= limit:
+            accepted[field] = candidate
+        elif accepted[field] > limit:
+            # Already past the limit - which the sidebar allows, since
+            # StripCrop enforces nothing. Take the move only if it is an
+            # improvement, so the handles can climb out of a state they could
+            # not have reached by dragging. Never clamp to limit here: that
+            # would snap the crop a long way on the first nudge.
+            accepted[field] = min(candidate, accepted[field])
+        else:
+            # Inside the valid range and pushing out of it. Stop against the
+            # limit rather than refusing the move, so the crop ends up where
+            # the drag was actually heading.
+            accepted[field] = limit
+
+    strip.crop.min_x = int(accepted[0])
+    strip.crop.max_x = int(accepted[1])
+    strip.crop.min_y = int(accepted[2])
+    strip.crop.max_y = int(accepted[3])
+
+    return tuple(accepted)
 
 
 # --- Strip geometry ---

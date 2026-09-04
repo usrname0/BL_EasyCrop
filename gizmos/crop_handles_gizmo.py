@@ -8,13 +8,12 @@ Based on the modal operator but using gizmos for better integration.
 import bpy
 import math
 import gpu
-from gpu_extras.batch import batch_for_shader
 from bpy.types import Gizmo, GizmoGroup
 from mathutils import Vector, Matrix
 
 from ..operators.crop_core import (
     get_crop_state, is_strip_visible_at_frame,
-    get_strip_geometry_with_flip_support, get_strip_flip_state,
+    get_strip_geometry_with_flip_support,
     get_strip_rotation, get_strip_dimensions, get_edge_midpoints,
     res_to_screen, compute_crop_delta, apply_crop_changes
 )
@@ -127,8 +126,10 @@ class EASYCROP_GT_crop_handle(Gizmo):
             except Exception:
                 return {'CANCELLED'}
         else:
-            # Store initial mouse position for delta calculation
-            self.init_mouse_pos = (event.mouse_region_x, event.mouse_region_y)
+            # The cursor position the next delta is measured from. The drag
+            # moves the crop by how far the cursor travelled since the last
+            # event, not by where it now points - see _update_crop_from_gizmo_drag.
+            self.last_mouse_pos = (event.mouse_region_x, event.mouse_region_y)
 
             # Mark drag as active to prevent gizmo repositioning
             EASYCROP_GGT_crop_handles._drag_active = True
@@ -151,10 +152,14 @@ class EASYCROP_GT_crop_handle(Gizmo):
             # Store initial crop values for this drag operation
             strip = context.scene.sequence_editor.active_strip
             if strip and hasattr(strip, 'crop') and strip.crop:
-                self.crop_start = (strip.crop.min_x, strip.crop.max_x,
-                                   strip.crop.min_y, strip.crop.max_y)
+                self.crop_start = (float(strip.crop.min_x), float(strip.crop.max_x),
+                                   float(strip.crop.min_y), float(strip.crop.max_y))
             else:
-                self.crop_start = (0, 0, 0, 0)
+                self.crop_start = (0.0, 0.0, 0.0, 0.0)
+            # The crop this drag has accepted so far. Each event accumulates
+            # onto this rather than onto crop_start, so a crop held against a
+            # limit moves again the moment the cursor heads back off it.
+            self.crop_current = self.crop_start
 
             return {'RUNNING_MODAL'}
 
@@ -163,11 +168,14 @@ class EASYCROP_GT_crop_handle(Gizmo):
         if self.handle_type == "center":
             return {'FINISHED'}
 
-        # Calculate delta from initial position
-        if hasattr(self, 'init_mouse_pos'):
+        # Movement since the previous event, not since the drag began.
+        # event.mouse_region_x stays continuous under use_grab_cursor, so
+        # differencing consecutive events is safe.
+        if hasattr(self, 'last_mouse_pos'):
             current_mouse = (event.mouse_region_x, event.mouse_region_y)
-            delta = (current_mouse[0] - self.init_mouse_pos[0],
-                     current_mouse[1] - self.init_mouse_pos[1])
+            delta = (current_mouse[0] - self.last_mouse_pos[0],
+                     current_mouse[1] - self.last_mouse_pos[1])
+            self.last_mouse_pos = current_mouse
         else:
             delta = (0, 0)
 
@@ -345,8 +353,9 @@ class EASYCROP_GT_crop_handle(Gizmo):
         # Convert gizmo handle type/index to unified handle index (0-7)
         handle_index = self.handle_index if self.handle_type == "corner" else self.handle_index + 4
 
-        apply_crop_changes(handle_index, strip, dx_res, dy_res,
-                           self.crop_start, strip_width, strip_height, flip_x, flip_y)
+        self.crop_current = apply_crop_changes(
+            handle_index, strip, dx_res, dy_res,
+            self.crop_current, strip_width, strip_height, flip_x, flip_y)
 
 
 class EASYCROP_GGT_crop_handles(GizmoGroup):
@@ -548,27 +557,18 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
 
 def register_crop_handles_gizmo():
     """Register the crop handles gizmo classes."""
-    try:
-        bpy.utils.register_class(EASYCROP_GT_crop_handle)
-        bpy.utils.register_class(EASYCROP_GGT_crop_handles)
+    bpy.utils.register_class(EASYCROP_GT_crop_handle)
+    bpy.utils.register_class(EASYCROP_GGT_crop_handles)
 
-        try:
-            wm = bpy.context.window_manager
-            if hasattr(wm, 'gizmo_group_type_ensure'):
-                wm.gizmo_group_type_ensure(EASYCROP_GGT_crop_handles.bl_idname)
-        except Exception:
-            pass  # Expected for PERSISTENT gizmo groups
-
-        return True
-
-    except Exception:
-        return False
+    # The group is also linked by the tool's bl_widget, and its poll() gates on
+    # the tool being active, so this is belt and braces rather than what makes
+    # the handles appear. There is no window manager in background mode.
+    wm = getattr(bpy.context, "window_manager", None)
+    if wm is not None:
+        wm.gizmo_group_type_ensure(EASYCROP_GGT_crop_handles.bl_idname)
 
 
 def unregister_crop_handles_gizmo():
     """Unregister the crop handles gizmo classes."""
-    try:
-        bpy.utils.unregister_class(EASYCROP_GGT_crop_handles)
-        bpy.utils.unregister_class(EASYCROP_GT_crop_handle)
-    except Exception:
-        pass
+    bpy.utils.unregister_class(EASYCROP_GGT_crop_handles)
+    bpy.utils.unregister_class(EASYCROP_GT_crop_handle)

@@ -4,7 +4,7 @@
 # Blender Extension Manifest
 schema_version = "1.0.0"
 id = "BL_EasyCrop"
-version = "2.0.3"
+version = "2.0.4"
 
 name = "BL Easy Crop"
 tagline = "Use handles for easy cropping in the Blender VSE Preview window"
@@ -30,11 +30,11 @@ license = ["SPDX:GPL-3.0-or-later"]
 description = """A simplified cropping interface for the built-in crop in Blender's Video Sequence Editor (VSE).
 
 Features:
-• Crop looks and behaves a bit more like the other transforms (rotate, resize, move, transform)
-• Click and drag handles to crop in the VSE Preview window
-• Select the crop tool via toolbar, menu or shortcut (default "Shift + C")
-• Respects user's custom-keybinds
-• Works with all strip types that support cropping
+- Crop looks and behaves a bit more like the other transforms (rotate, resize, move, transform)
+- Click and drag handles to crop in the VSE Preview window
+- Select the crop tool via toolbar, menu or shortcut (default "Shift + C")
+- Respects user's custom-keybinds
+- Works with all strip types that support cropping
 """
 
 # Copyright notices
