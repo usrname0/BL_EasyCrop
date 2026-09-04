@@ -24,6 +24,13 @@ _USE_STRIPS_API = bpy.app.version >= (5, 0, 0)
 HANDLE_RADIUS = 6.0
 SELECT_RADIUS = 25.0
 
+# One palette, shared. The gizmo tool drew its white handles at alpha 0.8 and
+# the modal operator drew the same handles at 0.7, which is a visible step
+# between the two interfaces for no reason anyone recorded. 0.8 is the gizmo's,
+# and the gizmo is the primary interface.
+HANDLE_COLOR = (1.0, 1.0, 1.0, 0.8)
+ACCENT_COLOR = (1.0, 0.5, 0.0, 1.0)
+
 # The modal operator's session state, at module level because its draw handler
 # is a plain function that Blender calls with no reference to the operator.
 _draw_handle = None    # the PREVIEW draw handler, or None when not drawing

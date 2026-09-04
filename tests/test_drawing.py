@@ -29,10 +29,20 @@ is a third, and it had a third copy of the angle derivation. All three now call
 crop_core.handle_screen_angle, and test_both_draw_paths_call_the_shared_helper
 is what stops a fourth appearing.
 
-What it does NOT reach: the remaining suspected contributor, which is that
-_draw_handles_with_gpu sets gpu.state.blend_set('ALPHA') while the gizmo's own
-draw() inherits whatever Blender's gizmo pass is in. GPU state is not
-observable from a background Blender.
+The second half of the same problem was GPU state, and it survived the angle
+fix - reported again from a real session, with the right diagnosis attached.
+The three paths are called from three different Blender passes: the gizmo tool's
+idle draw from the gizmo pass, its drag draw and the modal operator's from
+POST_PIXEL draw handlers. Only one of the three set alpha blending, so the other
+two rendered the same RGBA at whatever blending their pass happened to leave on,
+and a pass without it draws a 0.8-alpha handle opaque. The white handles also
+differed outright, 0.8 in the gizmo against 0.7 in the modal operator.
+
+Both are now owned one level down: draw_rotated_square and draw_crop_symbol_at
+set and restore their own blend state, and the palette is two constants in
+crop_core. A caller cannot forget either. That is what the last two checks here
+are for - GPU state itself is not observable from a background Blender, so they
+inspect the source instead.
 
     "/c/Program Files/Blender Foundation/Blender 5.2/blender.exe" -b \
         --factory-startup --python tests/test_drawing.py
@@ -269,11 +279,62 @@ def test_both_draw_paths_call_the_shared_helper():
               "> 0.01" in src, False)
 
 
+def test_the_drawing_primitives_manage_their_own_blend_state():
+    """A primitive drawn from three different passes cannot trust the pass.
+
+    Each of the three draw paths runs in a different Blender pass, and a pass
+    without alpha blending renders a translucent colour opaque. Leaving it to
+    the callers meant one of the three remembered and the same handle looked
+    different in each interface. Save-set-restore in the primitive is the only
+    arrangement a caller cannot get wrong.
+    """
+    import inspect
+    from BL_EasyCrop.operators import crop_drawing
+
+    for name in ("draw_rotated_square", "draw_crop_symbol_at"):
+        src = inspect.getsource(getattr(crop_drawing, name))
+        check(f"{name} reads the previous blend state", "blend_get()" in src, True)
+        check(f"{name} sets alpha blending", "blend_set('ALPHA')" in src, True)
+        check(f"{name} restores what it found", "blend_set(prev_blend)" in src, True)
+
+
+def test_one_palette_for_every_handle():
+    """The gizmo drew white handles at 0.8 and the modal operator at 0.7.
+
+    Nothing recorded why, and it is a visible step between the two interfaces.
+    Both now read crop_core's constants, and no draw path may carry a literal
+    RGBA of its own.
+    """
+    import inspect
+    from BL_EasyCrop.operators import crop_core, crop_drawing
+    from BL_EasyCrop.gizmos.crop_handles_gizmo import (
+        EASYCROP_GT_crop_handle, EASYCROP_GGT_crop_handles)
+
+    check("white handle alpha is 0.8", crop_core.HANDLE_COLOR, (1.0, 1.0, 1.0, 0.8))
+    check("accent is opaque orange", crop_core.ACCENT_COLOR, (1.0, 0.5, 0.0, 1.0))
+
+    sources = {
+        "modal operator": inspect.getsource(crop_drawing.draw_crop_handles),
+        "gizmo idle draw": inspect.getsource(EASYCROP_GT_crop_handle.draw),
+        "gizmo drag draw": inspect.getsource(EASYCROP_GT_crop_handle._draw_handles_with_gpu),
+        "gizmo modal draw": inspect.getsource(EASYCROP_GT_crop_handle._draw_handle_common),
+    }
+    for label, src in sources.items():
+        check(f"{label} uses the shared palette",
+              "HANDLE_COLOR" in src or "ACCENT_COLOR" in src, True)
+        # A literal 4-tuple of floats is the thing that drifted last time.
+        for literal in ("1.0, 1.0, 1.0, 0.7", "1.0, 1.0, 1.0, 0.8",
+                        "1.0, 0.5, 0.0, 1.0", "1.0, 1.0, 1.0, 0.6"):
+            check(f"{label} carries no literal ({literal})", literal in src, False)
+
+
 def main():
     tests = [
         test_both_paths_draw_the_same_square,
         test_an_unrotated_strip_gives_exactly_zero,
         test_both_draw_paths_call_the_shared_helper,
+        test_the_drawing_primitives_manage_their_own_blend_state,
+        test_one_palette_for_every_handle,
         test_the_local_copy_matches_the_real_one,
     ]
 

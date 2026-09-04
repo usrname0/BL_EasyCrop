@@ -14,6 +14,7 @@ from gpu_extras.batch import batch_for_shader
 from .crop_core import (
     get_crop_state, get_draw_data, set_draw_data,
     get_strip_geometry_with_flip_support, handle_screen_angle,
+    HANDLE_COLOR, ACCENT_COLOR,
     get_edge_midpoints, is_strip_visible_at_frame,
     res_to_screen, HANDLE_RADIUS, SELECT_RADIUS
 )
@@ -21,13 +22,19 @@ from .crop_core import (
 
 # --- Shared drawing primitives ---
 
-def draw_crop_symbol_at(center_x, center_y, color=(1.0, 1.0, 1.0, 0.8)):
+def draw_crop_symbol_at(center_x, center_y, color=HANDLE_COLOR):
     """Draw the crop symbol (L-brackets + inner rectangle) at a screen position.
 
     Used by both modal operator drawing and gizmo drawing.
+
+    WARNING: sets its own blend state and puts back what it found. See
+    draw_rotated_square for why that belongs here and not in the callers.
     """
     outer_size = 8
     inner_size = 5
+
+    prev_blend = gpu.state.blend_get()
+    gpu.state.blend_set('ALPHA')
 
     line_shader = gpu.shader.from_builtin('UNIFORM_COLOR')
     gpu.state.line_width_set(1.5)
@@ -69,6 +76,7 @@ def draw_crop_symbol_at(center_x, center_y, color=(1.0, 1.0, 1.0, 0.8)):
     batch.draw(line_shader)
 
     gpu.state.line_width_set(1.0)
+    gpu.state.blend_set(prev_blend)
 
 
 def draw_rotated_square(center_x, center_y, half_size, angle, color):
@@ -81,7 +89,18 @@ def draw_rotated_square(center_x, center_y, half_size, angle, color):
         half_size: Half the side length in pixels (HANDLE_RADIUS)
         angle: Rotation angle in radians (already flip-compensated)
         color: RGBA tuple
+
+    WARNING: this sets blend state and restores what it found, and that belongs
+    here rather than in the callers. The three paths that draw handles are each
+    called from a different Blender pass - the gizmo tool's idle draw from the
+    gizmo pass, its drag draw and the modal operator's from POST_PIXEL draw
+    handlers - and a pass that does not happen to have alpha blending on renders
+    this square's colour opaque. Left to the callers, only one of the three
+    remembered, and the same handle looked different in each interface.
     """
+    prev_blend = gpu.state.blend_get()
+    gpu.state.blend_set('ALPHA')
+
     shader = gpu.shader.from_builtin('UNIFORM_COLOR')
 
     if abs(angle) > 0.01:
@@ -115,6 +134,8 @@ def draw_rotated_square(center_x, center_y, half_size, angle, color):
     shader.bind()
     shader.uniform_float("color", color)
     batch.draw(shader)
+
+    gpu.state.blend_set(prev_blend)
 
 
 # --- Modal operator draw callback ---
@@ -152,10 +173,6 @@ def draw_crop_handles():
     active_corner = draw_data.get('active_corner', -1)
     mouse_x = draw_data.get('mouse_x', 0)
     mouse_y = draw_data.get('mouse_y', 0)
-
-    # Orange for the handle being dragged or hovered, white for the rest.
-    ACCENT_COLOR = (1.0, 0.5, 0.0, 1.0)
-    HANDLE_COLOR = (1.0, 1.0, 1.0, 0.7)
 
     corners, (pivot_x, pivot_y), _ = \
         get_strip_geometry_with_flip_support(strip, scene)

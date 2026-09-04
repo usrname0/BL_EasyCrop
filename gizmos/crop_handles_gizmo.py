@@ -11,7 +11,6 @@ where a handle belongs on a flipped or rotated strip.
 """
 
 import bpy
-import gpu
 from bpy.types import Gizmo, GizmoGroup
 from mathutils import Vector, Matrix
 
@@ -20,7 +19,8 @@ from ..operators.crop_core import (
     get_strip_geometry_with_flip_support, get_strip_flip_state,
     get_strip_dimensions, get_edge_midpoints,
     res_to_screen, compute_crop_delta, apply_crop_changes, autokey_crop,
-    handle_window_position, handle_screen_angle, HANDLE_RADIUS, SELECT_RADIUS
+    handle_window_position, handle_screen_angle,
+    HANDLE_RADIUS, SELECT_RADIUS, HANDLE_COLOR, ACCENT_COLOR
 )
 from ..operators.crop_drawing import draw_crop_symbol_at, draw_rotated_square
 
@@ -68,10 +68,7 @@ class EASYCROP_GT_crop_handle(Gizmo):
         self.hide = False
         center_pos = self.matrix_basis.translation
 
-        if self.is_highlight:
-            color = (*self.color_highlight, self.alpha_highlight)
-        else:
-            color = (1.0, 1.0, 1.0, 0.8)
+        color = ACCENT_COLOR if self.is_highlight else HANDLE_COLOR
 
         if self.handle_type == "center":
             draw_crop_symbol_at(center_pos.x, center_pos.y, color)
@@ -89,13 +86,9 @@ class EASYCROP_GT_crop_handle(Gizmo):
         center_pos = self.matrix_basis.translation
 
         if self.handle_type == "center":
-            color = (1.0, 1.0, 1.0, 0.6 if during_modal else 0.8)
-            draw_crop_symbol_at(center_pos.x, center_pos.y, color)
+            draw_crop_symbol_at(center_pos.x, center_pos.y, HANDLE_COLOR)
         else:
-            if self.is_highlight or during_modal:
-                color = (1.0, 0.5, 0.0, 1.0)
-            else:
-                color = (1.0, 1.0, 1.0, 0.7)
+            color = ACCENT_COLOR if (self.is_highlight or during_modal) else HANDLE_COLOR
 
             rotation_angle = self.matrix_basis.to_3x3().to_euler().z
             draw_rotated_square(center_pos.x, center_pos.y, HANDLE_RADIUS,
@@ -228,10 +221,9 @@ class EASYCROP_GT_crop_handle(Gizmo):
         res_x = scene.render.resolution_x
         res_y = scene.render.resolution_y
 
-        # Restore whatever the caller had. A draw handler that leaves blending
-        # switched on changes how everything drawn after it in the region looks.
-        prev_blend = gpu.state.blend_get()
-        gpu.state.blend_set('ALPHA')
+        # No blend handling here: draw_rotated_square and draw_crop_symbol_at
+        # each set and restore their own, so all three draw paths composite the
+        # same way whatever pass Blender calls them from.
 
         # The same angle refresh() gives the gizmos, from the same helper, so
         # the handles cannot change appearance at the moment a drag starts.
@@ -243,27 +235,20 @@ class EASYCROP_GT_crop_handle(Gizmo):
 
         # Draw corner handles
         for i, screen_co in enumerate(screen_corners):
-            if self.handle_type == "corner" and self.handle_index == i:
-                color = (1.0, 0.5, 0.0, 1.0)
-            else:
-                color = (1.0, 1.0, 1.0, 0.8)
-            draw_rotated_square(screen_co[0], screen_co[1], HANDLE_RADIUS, angle, color)
+            dragged = self.handle_type == "corner" and self.handle_index == i
+            draw_rotated_square(screen_co[0], screen_co[1], HANDLE_RADIUS, angle,
+                                ACCENT_COLOR if dragged else HANDLE_COLOR)
 
         # Draw edge handles
         for i, midpoint in enumerate(edge_midpoints):
             screen_co = res_to_screen(midpoint.x, midpoint.y, res_x, res_y, view2d)
-            if self.handle_type == "edge" and self.handle_index == i:
-                color = (1.0, 0.5, 0.0, 1.0)
-            else:
-                color = (1.0, 1.0, 1.0, 0.8)
-            draw_rotated_square(screen_co[0], screen_co[1], HANDLE_RADIUS, angle, color)
+            dragged = self.handle_type == "edge" and self.handle_index == i
+            draw_rotated_square(screen_co[0], screen_co[1], HANDLE_RADIUS, angle,
+                                ACCENT_COLOR if dragged else HANDLE_COLOR)
 
         # Draw center handle
         center_screen = res_to_screen(pivot_x, pivot_y, res_x, res_y, view2d)
-        draw_crop_symbol_at(center_screen[0], center_screen[1],
-                            (1.0, 1.0, 1.0, 0.8))
-
-        gpu.state.blend_set(prev_blend)
+        draw_crop_symbol_at(center_screen[0], center_screen[1], HANDLE_COLOR)
 
     def _commit(self, context):
         """Auto-key and push undo for a drag that changed something.
