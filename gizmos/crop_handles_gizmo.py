@@ -108,7 +108,7 @@ class EASYCROP_GT_crop_handle(Gizmo):
         Whether Blender skips a hidden gizmo when picking is Blender's business
         and would have to be re-measured every version; the decline is ours.
         """
-        if getattr(self, "suppressed", False):
+        if self.suppressed:
             return -1
 
         gizmo_pos = self.matrix_basis.translation
@@ -225,8 +225,6 @@ class EASYCROP_GT_crop_handle(Gizmo):
         # own, so all three draw paths composite the same way whatever pass
         # Blender calls them from.
 
-        # The same angle refresh() gives the gizmos, from the same helper, so
-        # the handles cannot change appearance at the moment a drag starts.
         screen_corners = [
             Vector(res_to_screen(c.x, c.y, res_x, res_y, view2d))
             for c in corners
@@ -235,6 +233,8 @@ class EASYCROP_GT_crop_handle(Gizmo):
             Vector(res_to_screen(m.x, m.y, res_x, res_y, view2d))
             for m in edge_midpoints
         ]
+        # The same angle refresh() gives the gizmos, from the same helper, so
+        # the handles cannot change appearance at the moment a drag starts.
         angle = handle_screen_angle(screen_corners)
 
         # Recomputed rather than read off the gizmos, because refresh() stands

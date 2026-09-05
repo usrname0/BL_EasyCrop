@@ -407,8 +407,7 @@ def suppressed_handles(screen_positions, crop, strip_width, strip_height,
 
     Strict subset, not "fewer axes": two handles with equal mobility are the
     ordinary collapsed-in-the-middle case, where either one widens the crop and
-    the user finds out which by moving it. Suppressing one of those would take
-    away a working handle to no purpose.
+    the user finds out which by moving it.
 
     The dominating handle must not itself be dominated, so that a chain -
     A beaten by B, B beaten by C, A and C not touching - cannot suppress A on
@@ -433,12 +432,12 @@ def suppressed_handles(screen_positions, crop, strip_width, strip_height,
 
 
 def suppressed_handles_for_strip(strip, scene, screen_positions):
-    """suppressed_handles for a live strip - what the five call sites use.
+    """suppressed_handles for a live strip, read from the strip's own crop.
 
     WARNING: every path that draws or hit-tests a handle has to ask this, and
     ask it with the same screen positions. A draw path that suppresses a handle
-    the hit test still grabs, or the reverse, is the failure this addon has
-    already shipped twice in other guises.
+    the hit test still grabs, or the reverse, lights one handle and moves
+    another.
     """
     crop = (strip.crop.min_x, strip.crop.max_x,
             strip.crop.min_y, strip.crop.max_y)

@@ -377,11 +377,10 @@ class EASYCROP_OT_crop(bpy.types.Operator):
     def _get_crop_corners(self, context):
         """Screen positions of the eight handles, and which are suppressed.
 
-        Returns (corners, midpoints, suppressed). The suppressed set comes back
-        from here rather than being worked out by the caller so that it is
-        always derived from the same geometry snapshot as the positions it is
-        measured against - a set computed from a second, later read of the
-        strip could disagree with the distances the hit test then uses.
+        Returns (corners, midpoints, suppressed). The suppressed set is derived
+        here so that it and the positions come from one read of the strip; a
+        set computed separately can disagree with the distances the hit test
+        then measures.
         """
         strip = context.scene.sequence_editor.active_strip
         scene = context.scene

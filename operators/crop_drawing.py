@@ -214,7 +214,7 @@ def draw_crop_handles():
 
 
 def _get_hovered_corner(screen_corners, screen_midpoints, mouse_x, mouse_y,
-                        suppressed=frozenset()):
+                        suppressed):
     """The handle nearest the cursor within SELECT_RADIUS, or -1.
 
     WARNING: this must agree with _get_corner_at_mouse on the radius, the
