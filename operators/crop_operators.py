@@ -19,7 +19,7 @@ from .crop_core import (
     get_strips, get_selected_strips,
     get_strip_dimensions, get_edge_midpoints, get_strip_flip_state,
     res_to_screen, compute_crop_delta, apply_crop_changes, autokey_crop,
-    handle_window_position, SELECT_RADIUS
+    handle_window_position, suppressed_handles_for_strip, SELECT_RADIUS
 )
 from .crop_drawing import draw_crop_handles
 
@@ -356,12 +356,18 @@ class EASYCROP_OT_crop(bpy.types.Operator):
         Nearest rather than first: at a 25px grab radius the corners and edge
         midpoints of a crop rect narrower than 100px on screen sit inside each
         other's radius, and first-match would hand every such click to a corner.
+
+        WARNING: this must agree with _get_hovered_corner in crop_drawing on
+        the radius, the nearest-wins rule *and* the suppressed set. This one
+        decides what a click grabs, that one what lights up.
         """
         mouse_pos = Vector((event.mouse_region_x, event.mouse_region_y))
-        corners, midpoints = self._get_crop_corners(context)
+        corners, midpoints, suppressed = self._get_crop_corners(context)
 
         best, best_distance = -1, SELECT_RADIUS
         for i, pos in enumerate(list(corners) + list(midpoints)):
+            if i in suppressed:
+                continue
             distance = (pos - mouse_pos).length
             if distance <= best_distance:
                 best, best_distance = i, distance
@@ -369,11 +375,18 @@ class EASYCROP_OT_crop(bpy.types.Operator):
         return best
 
     def _get_crop_corners(self, context):
-        """Get the corner and edge midpoint positions in screen space."""
+        """Screen positions of the eight handles, and which are suppressed.
+
+        Returns (corners, midpoints, suppressed). The suppressed set comes back
+        from here rather than being worked out by the caller so that it is
+        always derived from the same geometry snapshot as the positions it is
+        measured against - a set computed from a second, later read of the
+        strip could disagree with the distances the hit test then uses.
+        """
         strip = context.scene.sequence_editor.active_strip
         scene = context.scene
         if not strip or not context.region:
-            return [], []
+            return [], [], frozenset()
 
         corners, _, _ = get_strip_geometry_with_flip_support(strip, scene)
         edge_midpoints = get_edge_midpoints(corners)
@@ -391,7 +404,10 @@ class EASYCROP_OT_crop(bpy.types.Operator):
             for m in edge_midpoints
         ]
 
-        return screen_corners, screen_midpoints
+        suppressed = suppressed_handles_for_strip(
+            strip, scene, screen_corners + screen_midpoints)
+
+        return screen_corners, screen_midpoints, suppressed
 
     def cancel(self, context: bpy.types.Context):
         """Called when operator is canceled by Blender."""

@@ -178,22 +178,24 @@ class FakeOperator:
     object with the one attribute it uses will do.
     """
 
-    def __init__(self, handles):
+    def __init__(self, handles, suppressed=frozenset()):
         self._handles = handles
+        self._suppressed = suppressed
 
     def _get_crop_corners(self, context):
-        return self._handles[:4], self._handles[4:]
+        return self._handles[:4], self._handles[4:], self._suppressed
 
 
-def grab_at(handles, x, y):
+def grab_at(handles, x, y, suppressed=frozenset()):
     """Drive _get_corner_at_mouse against a fixed set of handle positions."""
     return unbound(EASYCROP_OT_crop._get_corner_at_mouse)(
-        FakeOperator(handles), None, FakeEvent(x, y))
+        FakeOperator(handles, suppressed), None, FakeEvent(x, y))
 
 
-def hover_at(handles, x, y):
+def hover_at(handles, x, y, suppressed=frozenset()):
     """Drive _get_hovered_corner against the same set."""
-    return _get_hovered_corner(list(handles[:4]), list(handles[4:]), x, y)
+    return _get_hovered_corner(list(handles[:4]), list(handles[4:]), x, y,
+                               suppressed)
 
 
 def square_handles(left, bottom, right, top):
@@ -259,10 +261,15 @@ def test_nearest_handle_wins():
 
 
 class FakeGizmo:
-    """Stands in for a handle gizmo. test_select reads only matrix_basis."""
+    """Stands in for a handle gizmo.
 
-    def __init__(self, x, y):
+    test_select reads matrix_basis and, since suppression landed, the
+    `suppressed` flag the group's refresh() stamps on each handle.
+    """
+
+    def __init__(self, x, y, suppressed=False):
         self.matrix_basis = Matrix.Translation((x, y, 0))
+        self.suppressed = suppressed
 
 
 def test_gizmo_test_select_answers_hit_or_skip():
@@ -300,8 +307,50 @@ def test_gizmo_hit_radius_matches_the_shared_constant():
     check("outside the shared radius", outside, -1)
 
 
+def test_suppressed_handles_neither_light_up_nor_grab():
+    """The suppressed set has to reach both rules, or one lights and one moves.
+
+    Suppressing only the grab leaves a handle that highlights under the pointer
+    and then hands the click to something else - the exact hover/grab split
+    this file exists to police, reintroduced through the new argument.
+    """
+    handles = square_handles(400, 300, 700, 600)
+
+    # Dead on the bottom-left corner, with that corner suppressed. The nearest
+    # survivor is the left edge midpoint at (400, 450), 150px away and well
+    # outside the radius, so the answer must be "nothing here".
+    check("grab skips a suppressed handle",
+          grab_at(handles, 400, 300, frozenset({0})), -1)
+    check("hover skips a suppressed handle",
+          hover_at(handles, 400, 300, frozenset({0})), -1)
+
+    # With a survivor in reach the click falls through to it rather than
+    # being swallowed: 10px from the suppressed midpoint 4, 20px from corner 0.
+    short = square_handles(500, 500, 560, 560)
+    check("grab falls through to the nearest survivor",
+          grab_at(short, 500, 540, frozenset({4})), 1)
+    check("hover falls through to the nearest survivor",
+          hover_at(short, 500, 540, frozenset({4})), 1)
+
+
+def test_a_suppressed_gizmo_declines_the_pick():
+    """test_select must decline on its own, not lean on hide.
+
+    Whether Blender skips a hidden gizmo when picking is Blender's business and
+    would need re-measuring every version; the decline is ours.
+    """
+    call = unbound(EASYCROP_GT_crop_handle.test_select)
+
+    check("an unsuppressed handle still hits",
+          call(FakeGizmo(500, 500, suppressed=False), None, (500, 500)), 0)
+    check("a suppressed handle declines",
+          call(FakeGizmo(500, 500, suppressed=True), None, (500, 500)), -1)
+
+
 TESTS = (
     test_croppable_only_reaches_the_hit_test,
+    test_suppressed_handles_neither_light_up_nor_grab,
+    test_a_suppressed_gizmo_declines_the_pick,
     test_gizmo_test_select_answers_hit_or_skip,
     test_gizmo_hit_radius_matches_the_shared_constant,
     test_geometry_refuses_a_strip_with_no_crop,

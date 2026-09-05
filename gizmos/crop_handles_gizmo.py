@@ -22,7 +22,7 @@ from ..operators.crop_core import (
     get_strip_geometry_with_flip_support, get_strip_flip_state,
     get_strip_dimensions, get_edge_midpoints,
     res_to_screen, compute_crop_delta, apply_crop_changes, autokey_crop,
-    handle_window_position, handle_screen_angle,
+    handle_window_position, handle_screen_angle, suppressed_handles_for_strip,
     HANDLE_RADIUS, SELECT_RADIUS, HANDLE_COLOR, ACCENT_COLOR
 )
 from ..operators.crop_drawing import draw_crop_symbol_at, draw_rotated_square
@@ -44,11 +44,16 @@ class EASYCROP_GT_crop_handle(Gizmo):
     # RNA.
     handle_type: str
     handle_index: int
+    # Whether crop_core has ruled this handle unpickable for the current crop.
+    # The group's refresh() owns it; test_select and the drag-time draw path
+    # read it. A plain attribute for the same reason as the two above.
+    suppressed: bool
 
     def setup(self):
         """Setup the handle gizmo."""
         self.handle_type = "corner"  # or "edge" or "center"
         self.handle_index = 0
+        self.suppressed = False
 
         # Keeps the handles drawn and taking events while a drag is running,
         # rather than only while the group is idle.
@@ -70,8 +75,12 @@ class EASYCROP_GT_crop_handle(Gizmo):
         self.scale_basis = HANDLE_RADIUS
 
     def draw(self, context: bpy.types.Context):
-        """Draw the handle gizmo."""
-        self.hide = False
+        """Draw the handle gizmo.
+
+        Does not touch self.hide: the group's refresh() sets it on all nine
+        every redraw, and a handle suppressed there must stay hidden rather
+        than unhide itself the moment Blender asks it to draw.
+        """
         center_pos = self.matrix_basis.translation
 
         color = ACCENT_COLOR if self.is_highlight else HANDLE_COLOR
@@ -94,7 +103,14 @@ class EASYCROP_GT_crop_handle(Gizmo):
         whole vocabulary for a hit. Do not return a per-handle id - it reads as
         identifying which handle was struck and it does not; Blender asks each
         gizmo separately, and invoke() reads handle_type and handle_index.
+
+        A suppressed handle declines here rather than relying on hide alone.
+        Whether Blender skips a hidden gizmo when picking is Blender's business
+        and would have to be re-measured every version; the decline is ours.
         """
+        if getattr(self, "suppressed", False):
+            return -1
+
         gizmo_pos = self.matrix_basis.translation
         mouse_pos = event
 
@@ -215,18 +231,24 @@ class EASYCROP_GT_crop_handle(Gizmo):
             Vector(res_to_screen(c.x, c.y, res_x, res_y, view2d))
             for c in corners
         ]
+        screen_midpoints = [
+            Vector(res_to_screen(m.x, m.y, res_x, res_y, view2d))
+            for m in edge_midpoints
+        ]
         angle = handle_screen_angle(screen_corners)
 
-        # Draw corner handles
-        for i, screen_co in enumerate(screen_corners):
-            dragged = self.handle_type == "corner" and self.handle_index == i
-            draw_rotated_square(screen_co[0], screen_co[1], HANDLE_RADIUS, angle,
-                                ACCENT_COLOR if dragged else HANDLE_COLOR)
+        # Recomputed rather than read off the gizmos, because refresh() stands
+        # down for the duration of a drag and its answer is one crop stale. A
+        # drag cannot suppress the handle it is holding - see handle_mobility.
+        suppressed = suppressed_handles_for_strip(
+            strip, scene, screen_corners + screen_midpoints)
 
-        # Draw edge handles
-        for i, midpoint in enumerate(edge_midpoints):
-            screen_co = res_to_screen(midpoint.x, midpoint.y, res_x, res_y, view2d)
-            dragged = self.handle_type == "edge" and self.handle_index == i
+        # Corners 0-3 then edge midpoints 4-7, the numbering crop_core uses.
+        for i, screen_co in enumerate(screen_corners + screen_midpoints):
+            if i in suppressed:
+                continue
+            kind, index = ("corner", i) if i < 4 else ("edge", i - 4)
+            dragged = self.handle_type == kind and self.handle_index == index
             draw_rotated_square(screen_co[0], screen_co[1], HANDLE_RADIUS, angle,
                                 ACCENT_COLOR if dragged else HANDLE_COLOR)
 
@@ -476,31 +498,30 @@ class EASYCROP_GGT_crop_handles(GizmoGroup):
             Vector(res_to_screen(c.x, c.y, res_x, res_y, view2d))
             for c in corners
         ]
+        screen_midpoints = [
+            Vector(res_to_screen(m.x, m.y, res_x, res_y, view2d))
+            for m in edge_midpoints
+        ]
 
         # One angle for every handle, and the same one the drag path uses.
         # WARNING: do not go back to a per-handle angle - see the helper.
         handle_angle = handle_screen_angle(screen_corners)
 
-        # Position corner handles (0-3)
-        for i in range(4):
-            screen_co = screen_corners[i]
+        # Which handles a collapsed crop has made useless. This runs on every
+        # redraw but not during a drag - the early return above sees to that -
+        # so a handle cannot vanish from under a drag that is still holding it.
+        suppressed = suppressed_handles_for_strip(
+            active_strip, scene, screen_corners + screen_midpoints)
 
+        # Position the eight crop handles: corners 0-3, edge midpoints 4-7.
+        for i, screen_co in enumerate(screen_corners + screen_midpoints):
             transform_matrix = (Matrix.Translation((screen_co[0], screen_co[1], 0))
                                 @ Matrix.Rotation(handle_angle, 4, 'Z'))
 
-            self.gizmos[i].matrix_basis = transform_matrix
-            self.gizmos[i].hide = False
-
-        # Position edge handles (4-7) - same one angle, for the same reason.
-        for i in range(4):
-            midpoint = edge_midpoints[i]
-            screen_co = res_to_screen(midpoint.x, midpoint.y, res_x, res_y, view2d)
-
-            transform_matrix = (Matrix.Translation((screen_co[0], screen_co[1], 0))
-                                @ Matrix.Rotation(handle_angle, 4, 'Z'))
-
-            self.gizmos[i + 4].matrix_basis = transform_matrix
-            self.gizmos[i + 4].hide = False
+            gizmo = cast(EASYCROP_GT_crop_handle, self.gizmos[i])
+            gizmo.matrix_basis = transform_matrix
+            gizmo.suppressed = i in suppressed
+            gizmo.hide = gizmo.suppressed
 
         # Position center handle (8)
         screen_co = res_to_screen(pivot_x, pivot_y, res_x, res_y, view2d)

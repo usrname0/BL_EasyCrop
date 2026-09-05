@@ -24,6 +24,15 @@ _USE_STRIPS_API = bpy.app.version >= (5, 0, 0)
 HANDLE_RADIUS = 6.0
 SELECT_RADIUS = 25.0
 
+# How near two handles have to be drawn before one of them may be suppressed:
+# 2 * HANDLE_RADIUS is the distance at which the drawn squares touch, so by
+# this point the pair is neither tellable apart by eye nor separable by aim.
+#
+# WARNING: this is a *screen* distance and has to stay one. A crop collapses in
+# image pixels but the handles converge in region pixels, and the same crop is
+# unpickable when zoomed out and perfectly usable when zoomed in.
+COLLISION_RADIUS = 2.0 * HANDLE_RADIUS
+
 # The handle palette: white at rest, orange under the pointer or being dragged.
 #
 # WARNING: both interfaces draw from these. A copy kept in a draw path shows up
@@ -350,6 +359,93 @@ _HANDLE_FIELDS = {
 # The field on the same axis that the handle is not moving, whose value the
 # opposite-edge collision test has to add in.
 _OPPOSITE_FIELD = {0: 1, 1: 0, 2: 3, 3: 2}
+
+
+def handle_mobility(handle_index, crop, strip_width, strip_height,
+                    flip_x, flip_y):
+    """The axes a handle can still move on, as a frozenset of 'x' and/or 'y'.
+
+    crop is the (min_x, max_x, min_y, max_y) tuple this module uses throughout.
+
+    A channel is immobile only when it is pinned against both of the stops
+    apply_crop_changes enforces at once: sitting at 0, with a limit of 0 or
+    less. A handle that drives no channel on an axis - an edge midpoint - is
+    immobile on that axis by definition.
+
+    WARNING: a handle dragged *to* its limit is still mobile, because it
+    arrived there from 0 and can go back. Immobility means the crop coming
+    from the other side closed the gap, which is why the handle a drag is
+    holding can never be the one suppressed. Do not simplify this to
+    "value >= limit".
+    """
+    x_move, y_move = _HANDLE_FIELDS[map_handle(handle_index, flip_x, flip_y)]
+    axes = []
+    for axis, move, extent in (("x", x_move, strip_width),
+                               ("y", y_move, strip_height)):
+        if move is None:
+            continue
+        field, _sign = move
+        value = crop[field]
+        limit = extent - crop[_OPPOSITE_FIELD[field]] - 1.0
+        if value > 0.0 or value < limit:
+            axes.append(axis)
+    return frozenset(axes)
+
+
+def suppressed_handles(screen_positions, crop, strip_width, strip_height,
+                       flip_x, flip_y):
+    """Handle indices that must be neither drawn nor picked, as a frozenset.
+
+    screen_positions is the eight handle positions in region pixels, corners
+    0-3 then edge midpoints 4-7 - the flat numbering the rest of this module
+    uses.
+
+    A handle is suppressed when another handle within COLLISION_RADIUS can move
+    on every axis it can, and on at least one more. Where a crop has collapsed
+    far enough for handles to sit on top of each other, that leaves only the
+    ones a drag can actually recover with.
+
+    Strict subset, not "fewer axes": two handles with equal mobility are the
+    ordinary collapsed-in-the-middle case, where either one widens the crop and
+    the user finds out which by moving it. Suppressing one of those would take
+    away a working handle to no purpose.
+
+    The dominating handle must not itself be dominated, so that a chain -
+    A beaten by B, B beaten by C, A and C not touching - cannot suppress A on
+    the authority of a B that is about to disappear.
+    """
+    mobility = [handle_mobility(i, crop, strip_width, strip_height,
+                                flip_x, flip_y) for i in range(8)]
+    reach = COLLISION_RADIUS * COLLISION_RADIUS
+
+    def collides(i, j):
+        dx = screen_positions[i][0] - screen_positions[j][0]
+        dy = screen_positions[i][1] - screen_positions[j][1]
+        return dx * dx + dy * dy <= reach
+
+    def beaten_by(i, candidates):
+        return any(mobility[i] < mobility[j] and collides(i, j)
+                   for j in candidates if j != i)
+
+    dominated = [beaten_by(i, range(8)) for i in range(8)]
+    survivors = [j for j in range(8) if not dominated[j]]
+    return frozenset(i for i in range(8) if beaten_by(i, survivors))
+
+
+def suppressed_handles_for_strip(strip, scene, screen_positions):
+    """suppressed_handles for a live strip - what the five call sites use.
+
+    WARNING: every path that draws or hit-tests a handle has to ask this, and
+    ask it with the same screen positions. A draw path that suppresses a handle
+    the hit test still grabs, or the reverse, is the failure this addon has
+    already shipped twice in other guises.
+    """
+    crop = (strip.crop.min_x, strip.crop.max_x,
+            strip.crop.min_y, strip.crop.max_y)
+    strip_width, strip_height = get_strip_dimensions(strip, scene)
+    flip_x, flip_y = get_strip_flip_state(strip)
+    return suppressed_handles(screen_positions, crop, strip_width,
+                              strip_height, flip_x, flip_y)
 
 
 def apply_crop_changes(handle_index, strip, dx_res, dy_res, crop_base,

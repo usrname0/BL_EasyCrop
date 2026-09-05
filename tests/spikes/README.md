@@ -34,6 +34,28 @@ Two things it exists to stop you getting wrong:
   while the toolbar still draws with the tool correctly selected. That failure
   mode reads exactly like a broken addon.
 
+## `collapse_hold.py`
+
+Two questions a script cannot answer, in one held-open session.
+
+    blender.exe --factory-startup <a .blend with a croppable strip> \
+        --python tests/spikes/collapse_hold.py
+
+**Does one Ctrl+Z undo a gizmo drag?** `_commit` pushes undo from `exit()`, and
+`test_commit.py` proves the push restores a crop and proves the wiring by
+reading the source - but a gizmo drag cannot be driven from a script, so the
+end-to-end path has never run. If Blender's gizmo tweak operator pushes a step
+of its own after ours, the first Ctrl+Z lands on an identical state and reads as
+"undo did nothing".
+
+**At a collapsed crop, which handle does a click take?** Part 1 sets a normal
+crop; `part2()` in the Python console restores the collapsed values from the
+blend this was written for. Every crop change is logged as it happens, tagged
+with what caused it, and `GRABBED` names the handle actually picked.
+
+Not answerable by warping the pointer: see `../../BLENDER.md` -> *A scripted
+hover cannot be trusted without a call-count control*.
+
 ## `compare_shot.py`
 
 Shoots the crop handles from whichever copy of the addon it is pointed at, with

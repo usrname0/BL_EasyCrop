@@ -16,7 +16,8 @@ from .crop_core import (
     get_strip_geometry_with_flip_support, handle_screen_angle,
     HANDLE_COLOR, ACCENT_COLOR,
     get_edge_midpoints, is_strip_visible_at_frame,
-    res_to_screen, HANDLE_RADIUS, SELECT_RADIUS
+    res_to_screen, suppressed_handles_for_strip,
+    HANDLE_RADIUS, SELECT_RADIUS
 )
 
 
@@ -190,8 +191,14 @@ def draw_crop_handles():
     screen_center = res_to_screen(pivot_x, pivot_y, res_x, res_y, view2d)
     draw_crop_symbol_at(screen_center[0], screen_center[1])
 
+    # Handles a collapsed crop has made useless are neither drawn nor lit nor
+    # grabbable. _get_corner_at_mouse asks crop_core the same question with the
+    # same positions, so what lights up is always what a click would take.
+    suppressed = suppressed_handles_for_strip(
+        strip, scene, screen_corners + screen_midpoints)
+
     hover_corner = _get_hovered_corner(screen_corners, screen_midpoints,
-                                       mouse_x, mouse_y)
+                                       mouse_x, mouse_y, suppressed)
 
     # The same helper the gizmo tool's two draw paths use, so a handle cannot
     # change appearance at the instant a drag starts.
@@ -199,21 +206,27 @@ def draw_crop_handles():
 
     # Corners 0-3 then edge midpoints 4-7, the numbering apply_crop_changes uses.
     for i, pos in enumerate(screen_corners + screen_midpoints):
+        if i in suppressed:
+            continue
         highlighted = i == active_corner or i == hover_corner
         draw_rotated_square(pos[0], pos[1], HANDLE_RADIUS, angle,
                             ACCENT_COLOR if highlighted else HANDLE_COLOR)
 
 
-def _get_hovered_corner(screen_corners, screen_midpoints, mouse_x, mouse_y):
+def _get_hovered_corner(screen_corners, screen_midpoints, mouse_x, mouse_y,
+                        suppressed=frozenset()):
     """The handle nearest the cursor within SELECT_RADIUS, or -1.
 
-    WARNING: this must agree with _get_corner_at_mouse on both the radius and
-    the nearest-wins rule. This one decides which handle lights up, that one
-    which handle a click grabs, so any difference lights one and moves another.
+    WARNING: this must agree with _get_corner_at_mouse on the radius, the
+    nearest-wins rule and the suppressed set. This one decides which handle
+    lights up, that one which handle a click grabs, so any difference lights
+    one and moves another.
     """
     best, best_distance = -1, SELECT_RADIUS
 
     for i, pos in enumerate(screen_corners + screen_midpoints):
+        if i in suppressed:
+            continue
         distance = math.hypot(pos[0] - mouse_x, pos[1] - mouse_y)
         if distance <= best_distance:
             best, best_distance = i, distance
